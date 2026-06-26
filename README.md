@@ -77,6 +77,62 @@ El `/health` devuelve la versión de PostGIS: útil para confirmar que la base q
 
 ---
 
+## Conectar tu app (frontend) al backend desplegado
+
+El backend está desplegado en un VPS y accesible públicamente. Tu app debe apuntar a:
+
+| Recurso | URL |
+|---|---|
+| **Base de la API** | `http://144.22.43.169:3001/api/v1` |
+| Swagger (docs) | `http://144.22.43.169:3001/docs` |
+| Healthcheck | `http://144.22.43.169:3001/api/v1/health` |
+
+### Configuración en el frontend
+
+Define la URL base en una variable de entorno de tu app (no la hardcodees). Ejemplos:
+
+```bash
+# React / Vite        (.env)
+VITE_API_BASE_URL=http://144.22.43.169:3001/api/v1
+
+# Next.js             (.env.local)
+NEXT_PUBLIC_API_BASE_URL=http://144.22.43.169:3001/api/v1
+
+# Expo / React Native (.env)
+EXPO_PUBLIC_API_BASE_URL=http://144.22.43.169:3001/api/v1
+
+# Flutter             (--dart-define o config)
+API_BASE_URL=http://144.22.43.169:3001/api/v1
+```
+
+Y úsala en tu cliente HTTP:
+
+```ts
+const API = import.meta.env.VITE_API_BASE_URL; // o process.env.NEXT_PUBLIC_API_BASE_URL
+
+// Login
+const res = await fetch(`${API}/auth/login`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email, password }),
+});
+const data = await res.json();
+const accessToken = data.tokens.accessToken;   // el token está en tokens.accessToken
+
+// Llamadas protegidas
+await fetch(`${API}/profiles/me`, {
+  headers: { Authorization: `Bearer ${accessToken}` },
+});
+```
+
+### Notas importantes
+
+- **El JWT va en `tokens.accessToken`** de la respuesta de login/register (no en la raíz). Caduca a los 15 min; renueva con `POST /auth/refresh` enviando el `tokens.refreshToken`.
+- **CORS** ya acepta cualquier origen (`CORS_ORIGINS=*`), así que tu app puede llamar desde cualquier dominio en desarrollo.
+- **⚠️ HTTP vs HTTPS (Mixed Content):** la API se sirve por **`http://`** (sin TLS). Si tu frontend está servido por **`https://`**, el navegador **bloqueará** las llamadas por seguridad. Mientras la API no tenga HTTPS, sirve tu frontend también por `http://`. Para producción, pon la API detrás de un dominio con TLS (reverse proxy Nginx/Caddy → contenedor en `3001`) y usa esa URL `https://` como base.
+
+---
+
 ## Variables de entorno
 
 Copiar `.env.example` a `.env`. Claves principales:
