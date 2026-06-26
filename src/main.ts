@@ -17,8 +17,14 @@ async function bootstrap(): Promise<void> {
   const storageCfg = config.get<StorageConfig>('storage')!;
   const logger = new Logger('Bootstrap');
 
-  // Seguridad HTTP.
-  app.use(helmet());
+  // Seguridad HTTP. Se desactiva la CSP/COEP por defecto de helmet porque
+  // bloquean los assets inline que Swagger UI (/docs) necesita para renderizar.
+  app.use(
+    helmet({
+      contentSecurityPolicy: false,
+      crossOriginEmbedderPolicy: false,
+    }),
+  );
   app.enableCors({
     origin: appCfg.corsOrigins.includes('*') ? true : appCfg.corsOrigins,
     credentials: true,
