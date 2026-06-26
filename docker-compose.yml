@@ -26,7 +26,8 @@ services:
       # Vertex AI: usa la cuenta de servicio montada abajo (ADC por archivo).
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-credentials.json
     ports:
-      - '3000:3001'
+      # HOST:CONTENEDOR -> el host expone 3001, la app sigue en 3000 dentro
+      - '3001:3000'
     volumes:
       # Credencial de Vertex AI (solo lectura). Debe existir en el host.
       # Si NO usas Vertex (AI_VISION_ENABLED=false), puedes borrar esta linea.
