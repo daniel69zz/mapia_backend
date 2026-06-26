@@ -1,0 +1,31 @@
+# compiled output
+/dist
+/node_modules
+/build
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Local uploads (dev storage driver)
+/uploads
+
+# OS / IDE
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Tests
+/coverage
+/.nyc_output
+
+# GCP service account keys (NUNCA commitear)
+*-sa-key.json
+gcp-credentials.json
