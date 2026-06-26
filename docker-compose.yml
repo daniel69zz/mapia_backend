@@ -1,63 +1,38 @@
 # ============================================================
-# Mapia Backend - entorno de desarrollo local
-# Producción usará Cloud SQL + Google Cloud Storage (no este compose).
+# Mapia Backend - despliegue con Docker Compose
+#
+# Base de datos: 100% Supabase (configurada en .env).
+# No se levanta Postgres local. La API lee TODA su configuracion
+# de .env (env_file); aqui solo se sobreescribe lo del entorno.
+#
+# Arrancar:   docker compose up -d --build
+# Logs:       docker compose logs -f api
+# Parar:      docker compose down
 # ============================================================
 services:
-  postgres:
-    image: postgis/postgis:16-3.4
-    container_name: mapia_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${DB_USERNAME:-mapia_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-mapia_password}
-      POSTGRES_DB: ${DB_DATABASE:-mapia_db}
-    ports:
-      - '5432:5432'
-    volumes:
-      - mapia_pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${DB_USERNAME:-mapia_user} -d ${DB_DATABASE:-mapia_db}']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  redis:
-    image: redis:7-alpine
-    container_name: mapia_redis
-    restart: unless-stopped
-    ports:
-      - '6379:6379'
-    volumes:
-      - mapia_redisdata:/data
-
   api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: mapia_api
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
+    # Carga todas las variables desde .env (incluida la conexion a Supabase)...
+    env_file:
+      - .env
+    # ...y sobreescribe solo lo especifico del despliegue.
     environment:
       NODE_ENV: production
       PORT: 3000
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USERNAME: ${DB_USERNAME:-mapia_user}
-      DB_PASSWORD: ${DB_PASSWORD:-mapia_password}
-      DB_DATABASE: ${DB_DATABASE:-mapia_db}
-      DB_SSL: 'false'
-      DB_RUN_MIGRATIONS: 'true'
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-change_me_access}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change_me_refresh}
-      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      # Vertex AI: usa la cuenta de servicio montada abajo (ADC por archivo).
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/gcp-credentials.json
     ports:
       - '3000:3000'
-    # Para desarrollo iterativo puedes comentar 'build' y usar npm run start:dev en host.
-    profiles:
-      - full
+    volumes:
+      # Credencial de Vertex AI (solo lectura). Debe existir en el host.
+      # Si NO usas Vertex (AI_VISION_ENABLED=false), puedes borrar esta linea.
+      - ./gcp-credentials.json:/run/secrets/gcp-credentials.json:ro
+      # Persiste archivos cuando STORAGE_DRIVER=local
+      - mapia_uploads:/app/uploads
 
 volumes:
-  mapia_pgdata:
-  mapia_redisdata:
+  mapia_uploads:
