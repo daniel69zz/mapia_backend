@@ -9,6 +9,7 @@ import { Post } from '@modules/posts/entities/post.entity';
 import { AlertReport } from '@modules/reports/entities/alert-report.entity';
 import { MapAlertsQueryDto } from './dto/map-alerts-query.dto';
 import { MapBboxQueryDto, MapMarkerDto, MapNearbyQueryDto } from './dto/map-query.dto';
+import { MapPublicationsQueryDto } from './dto/map-publications-query.dto';
 
 interface MarkerRow {
   id: string;
@@ -88,6 +89,77 @@ export class MapService {
     }
 
     return this.mapRows(await qb.getRawMany<MarkerRow>());
+  }
+
+  /**
+   * Publicaciones (marcadores) para el mapa, opcionalmente dentro del viewport.
+   * Devuelve el shape que consume MapPublicationMarkerEntity del frontend.
+   */
+  async publications(query: MapPublicationsQueryDto) {
+    const qb = this.postRepo
+      .createQueryBuilder('post')
+      .innerJoin('profiles', 'profile', 'profile.user_id = post.author_id')
+      .select('post.id', 'publicationId')
+      .addSelect('post.title', 'title')
+      .addSelect('post.latitude', 'latitude')
+      .addSelect('post.longitude', 'longitude')
+      .addSelect('post.type', 'category')
+      .addSelect('post.created_at', 'createdAt')
+      .addSelect('profile.user_id', 'userId')
+      .addSelect('profile.name', 'userName')
+      .addSelect('profile.avatar_url', 'userProfileImageUrl')
+      .addSelect('profile.likes_count', 'userReputation')
+      .where('post.visibility = :vis', { vis: PostVisibility.PUBLIC })
+      .orderBy('post.created_at', 'DESC')
+      .limit(MAX_MARKERS);
+
+    if (
+      query.north !== undefined &&
+      query.south !== undefined &&
+      query.east !== undefined &&
+      query.west !== undefined
+    ) {
+      qb.andWhere('post.latitude BETWEEN :south AND :north', {
+        south: query.south,
+        north: query.north,
+      }).andWhere('post.longitude BETWEEN :west AND :east', {
+        west: query.west,
+        east: query.east,
+      });
+    }
+
+    const rows = await qb.getRawMany<{
+      publicationId: string;
+      title: string;
+      latitude: number;
+      longitude: number;
+      category: string;
+      createdAt: Date;
+      userId: string;
+      userName: string;
+      userProfileImageUrl: string | null;
+      userReputation: number | null;
+    }>();
+
+    return {
+      items: rows.map((r) => ({
+        publicationId: r.publicationId,
+        title: r.title,
+        latitude: Number(r.latitude),
+        longitude: Number(r.longitude),
+        userId: r.userId,
+        userName: r.userName,
+        userProfileImageUrl: r.userProfileImageUrl,
+        userReputation:
+          r.userReputation === null ? null : Number(r.userReputation),
+        createdAt:
+          r.createdAt instanceof Date
+            ? r.createdAt.toISOString()
+            : String(r.createdAt),
+        category: r.category,
+        markerType: 'publication',
+      })),
+    };
   }
 
   async alerts(query: MapAlertsQueryDto) {

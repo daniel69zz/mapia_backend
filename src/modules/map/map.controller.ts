@@ -4,6 +4,7 @@ import { Public } from '@common/decorators/public.decorator';
 import { MapService } from './map.service';
 import { MapAlertsQueryDto } from './dto/map-alerts-query.dto';
 import { MapBboxQueryDto, MapMarkerDto, MapNearbyQueryDto } from './dto/map-query.dto';
+import { MapPublicationsQueryDto } from './dto/map-publications-query.dto';
 
 @ApiTags('map')
 @Controller('map')
@@ -22,6 +23,13 @@ export class MapController {
   @ApiOperation({ summary: 'Marcadores cercanos a un punto por radio (PostGIS)' })
   nearby(@Query() query: MapNearbyQueryDto): Promise<MapMarkerDto[]> {
     return this.mapService.nearby(query);
+  }
+
+  @Public()
+  @Get('publications')
+  @ApiOperation({ summary: 'Publicaciones (marcadores) del mapa por viewport' })
+  publications(@Query() query: MapPublicationsQueryDto) {
+    return this.mapService.publications(query);
   }
 
   @Public()

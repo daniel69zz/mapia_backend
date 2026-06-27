@@ -125,12 +125,12 @@ export class ChatbotService {
     });
     form.append('file', blob, file.originalname || 'audio.m4a');
     form.append('model', this.ai.whisperModel);
-    form.append('language', 'es');
+    // Sin "language": Whisper autodetecta el idioma hablado y transcribe en ese
+    // mismo idioma. El prompt solo sesga la ortografía de nombres propios.
     form.append(
       'prompt',
-      'Transcripción en español de Bolivia para la app MAPIA. Vocabulario probable: ' +
-        'La Paz, El Alto, Sopocachi, Miraflores, Santa Cruz, Cochabamba, bloqueo, ' +
-        'corte de servicio, avasallamiento, sobreprecio, combustible, incidencia.',
+      'MAPIA, La Paz, El Alto, Sopocachi, Miraflores, Santa Cruz, Cochabamba, Oruro, ' +
+        'bloqueo, marcha, combustible, sobreprecio, corte de servicio, incidencia.',
     );
 
     let response: Response;
@@ -223,7 +223,9 @@ export class ChatbotService {
 
     const system = [
       'Eres el Asistente de MAPIA, un mapa social ciudadano de Bolivia.',
-      'Respondes en español, breve, claro y útil.',
+      'IMPORTANTE: detecta el idioma del mensaje del usuario y RESPONDE EN ESE MISMO IDIOMA',
+      '(español, inglés, portugués, etc.); traduce los datos de las incidencias si hace falta.',
+      'Sé breve, claro y útil.',
       'Responde ÚNICAMENTE con base en las incidencias proporcionadas en JSON. NO inventes datos.',
       'Si la lista está vacía, dilo con honestidad y sugiere ampliar la búsqueda.',
       'Resume cuántas hay y las más relevantes (tipo, severidad, lugar). No uses markdown.',
