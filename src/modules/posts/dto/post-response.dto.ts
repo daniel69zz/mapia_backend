@@ -58,7 +58,13 @@ export class PostResponseDto {
   address: string | null;
 
   @ApiPropertyOptional()
+  locationName: string | null;
+
+  @ApiPropertyOptional()
   radiusMeters: number | null;
+
+  @ApiProperty()
+  showOnMap: boolean;
 
   @ApiProperty()
   isVerified: boolean;

@@ -1,10 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
   IsLatitude,
   IsLongitude,
+  IsBoolean,
   IsOptional,
   IsString,
   Length,
@@ -44,6 +45,12 @@ export class CreatePostDto {
   @Length(0, 300)
   address?: string;
 
+  @ApiPropertyOptional({ example: 'Plaza Abaroa' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 300)
+  locationName?: string;
+
   @ApiPropertyOptional({ example: 500, description: 'Radio del evento en metros (0 = puntual)' })
   @IsOptional()
   @Type(() => Number)
@@ -51,4 +58,10 @@ export class CreatePostDto {
   @Min(0)
   @Max(50000)
   radiusMeters?: number;
+
+  @ApiPropertyOptional({ example: true, description: 'Mostrar esta publicacion en el mapa' })
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true')
+  @IsBoolean()
+  showOnMap?: boolean;
 }

@@ -103,6 +103,10 @@ export class MapService {
       .addSelect('post.title', 'title')
       .addSelect('post.latitude', 'latitude')
       .addSelect('post.longitude', 'longitude')
+      .addSelect('post.address', 'address')
+      .addSelect('post.location_name', 'locationName')
+      .addSelect('post.radius_meters', 'radiusMeters')
+      .addSelect('post.show_on_map', 'showOnMap')
       .addSelect('post.type', 'category')
       .addSelect('post.created_at', 'createdAt')
       .addSelect('profile.user_id', 'userId')
@@ -110,6 +114,7 @@ export class MapService {
       .addSelect('profile.avatar_url', 'userProfileImageUrl')
       .addSelect('profile.likes_count', 'userReputation')
       .where('post.visibility = :vis', { vis: PostVisibility.PUBLIC })
+      .andWhere('post.show_on_map = true')
       .orderBy('post.created_at', 'DESC')
       .limit(MAX_MARKERS);
 
@@ -133,6 +138,10 @@ export class MapService {
       title: string;
       latitude: number;
       longitude: number;
+      address: string | null;
+      locationName: string | null;
+      radiusMeters: number | null;
+      showOnMap: boolean;
       category: string;
       createdAt: Date;
       userId: string;
@@ -147,6 +156,13 @@ export class MapService {
         title: r.title,
         latitude: Number(r.latitude),
         longitude: Number(r.longitude),
+        address: r.address,
+        locationName: r.locationName ?? r.address,
+        radiusMeters:
+          r.radiusMeters === null || r.radiusMeters === undefined
+            ? 0
+            : Number(r.radiusMeters),
+        showOnMap: Boolean(r.showOnMap),
         userId: r.userId,
         userName: r.userName,
         userProfileImageUrl: r.userProfileImageUrl,
@@ -269,7 +285,8 @@ export class MapService {
       .addSelect('profile.user_id', 'authorId')
       .addSelect('profile.name', 'authorName')
       .addSelect('profile.avatar_url', 'authorAvatarUrl')
-      .where('post.visibility = :vis', { vis: PostVisibility.PUBLIC });
+      .where('post.visibility = :vis', { vis: PostVisibility.PUBLIC })
+      .andWhere('post.show_on_map = true');
   }
 
   private filteredAlertsQuery(query: MapAlertsQueryDto) {
