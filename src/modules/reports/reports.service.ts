@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '@common/dtos/pagination.dto';
 import { IStorageService, STORAGE_SERVICE } from '@core/storage/storage.types';
+import { IImageAnalyzer, IMAGE_ANALYZER } from '@core/ai/ai.types';
 import { PostsService } from '@modules/posts/posts.service';
 import { ContentReport } from './entities/content-report.entity';
 import { AlertReport, AlertType, ReportSeverity } from './entities/alert-report.entity';
@@ -57,6 +58,8 @@ export class ReportsService {
     private readonly alertImageRepo: Repository<AlertReportImage>,
     @Inject(STORAGE_SERVICE)
     private readonly storage: IStorageService,
+    @Inject(IMAGE_ANALYZER)
+    private readonly imageAnalyzer: IImageAnalyzer,
     private readonly postsService: PostsService,
   ) {}
 
@@ -81,6 +84,44 @@ export class ReportsService {
       zone: location.zone,
       confidence: confidenceScore(dto.text, product, location.zone),
     };
+  }
+
+  /**
+   * Igual que parseCitizenReport pero, si hay imágenes y la IA de visión está
+   * habilitada, refina título/descripción con el análisis de la primera foto.
+   * Si la IA está apagada o falla, devuelve el parseo de texto (nunca rompe).
+   */
+  async parseCitizenReportWithImages(
+    dto: ParseCitizenReportDto,
+    images: Express.Multer.File[],
+  ) {
+    const base = this.parseCitizenReport(dto);
+
+    const image = images?.[0];
+    if (!image || !IMAGE_MIME.includes(image.mimetype)) {
+      return base;
+    }
+
+    try {
+      const analysis = await this.imageAnalyzer.analyzeImage({
+        buffer: image.buffer,
+        mimeType: image.mimetype,
+      });
+      if (!analysis || analysis.confidence < 0.5) {
+        return base;
+      }
+      return {
+        ...base,
+        title: analysis.title?.trim() ? analysis.title : base.title,
+        description: analysis.description?.trim()
+          ? analysis.description
+          : base.description,
+        confidence: Math.max(base.confidence, analysis.confidence),
+      };
+    } catch {
+      // IA deshabilitada o sin credenciales: se conserva el parseo de texto.
+      return base;
+    }
   }
 
   async createCitizenReport(

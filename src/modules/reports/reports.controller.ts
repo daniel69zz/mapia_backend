@@ -49,6 +49,23 @@ export class ReportsController {
     return this.reportsService.parseCitizenReport(dto);
   }
 
+  @Public()
+  @Post('reports/parse-with-images')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Estructurar reporte combinando texto e imágenes (IA opcional)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileFieldsInterceptor([{ name: 'images', maxCount: 3 }], {
+      limits: { fileSize: MAX_REPORT_IMAGE_BYTES },
+    }),
+  )
+  parseCitizenReportWithImages(
+    @Body() dto: ParseCitizenReportDto,
+    @UploadedFiles() files?: { images?: Express.Multer.File[] },
+  ) {
+    return this.reportsService.parseCitizenReportWithImages(dto, files?.images ?? []);
+  }
+
   @Post('reports/analyze-photo')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Analizar una foto con IA (Vertex/Gemini) y crear el reporte' })
