@@ -68,4 +68,16 @@ export class Profile extends BaseEntity {
   @ApiProperty()
   @Column({ name: 'likes_count', type: 'int', default: 0 })
   likesCount: number;
+
+  @ApiProperty()
+  @Column({ name: 'dislikes_count', type: 'int', default: 0 })
+  dislikesCount: number;
+
+  @ApiProperty()
+  @Column({ name: 'reputation_score', type: 'int', default: 0 })
+  reputationScore: number;
+
+  @ApiPropertyOptional()
+  @Column({ name: 'reputation_updated_at', type: 'timestamptz', nullable: true })
+  reputationUpdatedAt: Date | null;
 }

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '@common/dtos/pagination.dto';
 import { PostType } from '@common/enums/post.enums';
+import { ReportReason } from '@common/enums/report-reason.enum';
 import { IStorageService, STORAGE_SERVICE } from '@core/storage/storage.types';
 import { IImageAnalyzer, IMAGE_ANALYZER } from '@core/ai/ai.types';
 import { PostsService } from '@modules/posts/posts.service';
@@ -202,7 +203,7 @@ export class ReportsService {
     const report = this.reportRepo.create({
       postId,
       reporterId,
-      reason: dto.reason,
+      reason: normalizeReportReason(dto.reason),
       description: dto.description ?? null,
     });
     const saved = await this.reportRepo.save(report);
@@ -289,6 +290,16 @@ export class ReportsService {
 
     return post.id;
   }
+}
+
+function normalizeReportReason(reason: string): ReportReason {
+  if (reason === 'FALSE_INFORMATION') return ReportReason.FALSE_INFO;
+  if (reason === 'INAPPROPRIATE') return ReportReason.OFFENSIVE;
+  if (reason === 'FALSE_INFO') return ReportReason.FALSE_INFO;
+  if (reason === 'OFFENSIVE') return ReportReason.OFFENSIVE;
+  if (reason === 'DANGEROUS') return ReportReason.DANGEROUS;
+  if (reason === 'SPAM') return ReportReason.SPAM;
+  return ReportReason.OTHER;
 }
 
 function isAllowedImage(file: Express.Multer.File): boolean {

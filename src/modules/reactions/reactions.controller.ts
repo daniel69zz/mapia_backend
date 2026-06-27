@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Body,
   Param,
   ParseUUIDPipe,
   Post,
@@ -14,12 +15,36 @@ import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { Public } from '@common/decorators/public.decorator';
 import { PaginatedResult, PaginationQueryDto } from '@common/dtos/pagination.dto';
 import { Reaction } from './entities/reaction.entity';
+import { CreateReactionDto } from './dto/create-reaction.dto';
 import { ReactionsService } from './reactions.service';
 
 @ApiTags('reactions')
 @Controller('posts/:postId')
 export class ReactionsController {
   constructor(private readonly reactionsService: ReactionsService) {}
+
+  @ApiBearerAuth()
+  @Post('reactions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Crear o actualizar reaccion de una publicacion' })
+  setReaction(
+    @Param('postId', ParseUUIDPipe) postId: string,
+    @CurrentUser('userId') userId: string,
+    @Body() dto: CreateReactionDto,
+  ) {
+    return this.reactionsService.setReaction(postId, userId, dto.type);
+  }
+
+  @ApiBearerAuth()
+  @Delete('reactions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Quitar reaccion del usuario autenticado' })
+  removeReaction(
+    @Param('postId', ParseUUIDPipe) postId: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    return this.reactionsService.removeReaction(postId, userId);
+  }
 
   @ApiBearerAuth()
   @Post('like')

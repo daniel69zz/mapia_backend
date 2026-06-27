@@ -13,6 +13,9 @@ export class PostAuthorDto {
 
   @ApiPropertyOptional()
   avatarUrl: string | null;
+
+  @ApiPropertyOptional()
+  reputation: number | null;
 }
 
 export class PostMediaDto {
@@ -60,8 +63,14 @@ export class PostResponseDto {
   @ApiProperty({ description: 'Si el usuario autenticado dio like (false si no hay sesión)' })
   isLiked: boolean;
 
+  @ApiPropertyOptional({ enum: ['LIKE', 'DISLIKE'] })
+  userReaction: 'LIKE' | 'DISLIKE' | null;
+
   @ApiProperty()
   likesCount: number;
+
+  @ApiProperty()
+  dislikesCount: number;
 
   @ApiProperty()
   commentsCount: number;

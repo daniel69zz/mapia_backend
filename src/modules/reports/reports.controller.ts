@@ -158,6 +158,17 @@ export class ReportsController {
     return this.reportsService.create(postId, userId, dto);
   }
 
+  @Post('posts/:postId/reports')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Reportar una publicacion' })
+  createForPost(
+    @Param('postId', ParseUUIDPipe) postId: string,
+    @CurrentUser('userId') userId: string,
+    @Body() dto: CreateReportDto,
+  ): Promise<ContentReport> {
+    return this.reportsService.create(postId, userId, dto);
+  }
+
   @Get('reports')
   @Roles(Role.MODERATOR, Role.ADMIN)
   @ApiOperation({ summary: 'Listar reportes (solo moderación)' })

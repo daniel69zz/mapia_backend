@@ -25,18 +25,18 @@ export class PostsService {
   ) {}
 
   /** Devuelve el conjunto de postIds (de la lista dada) que el usuario ya likeó. */
-  private async likedSet(
+  private async reactionMap(
     currentUserId: string | undefined,
     postIds: string[],
-  ): Promise<Set<string>> {
+  ): Promise<Map<string, 'LIKE' | 'DISLIKE'>> {
     if (!currentUserId || postIds.length === 0) {
-      return new Set<string>();
+      return new Map<string, 'LIKE' | 'DISLIKE'>();
     }
     const reactions = await this.reactionRepo.find({
       where: { userId: currentUserId, postId: In(postIds) },
-      select: { postId: true },
+      select: { postId: true, type: true },
     });
-    return new Set(reactions.map((r) => r.postId));
+    return new Map(reactions.map((r) => [r.postId, r.type]));
   }
 
   async create(authorId: string, dto: CreatePostDto): Promise<PostResponseDto> {
@@ -72,12 +72,12 @@ export class PostsService {
       skip: query.skip,
       take: query.limit,
     });
-    const liked = await this.likedSet(
+    const reactions = await this.reactionMap(
       currentUserId,
       items.map((p) => p.id),
     );
     return new PaginatedResult(
-      items.map((p) => toPostResponse(p, liked.has(p.id))),
+      items.map((p) => toPostResponse(p, reactions.get(p.id) ?? null)),
       total,
       query.page,
       query.limit,
@@ -96,12 +96,12 @@ export class PostsService {
       skip: query.skip,
       take: query.limit,
     });
-    const liked = await this.likedSet(
+    const reactions = await this.reactionMap(
       currentUserId,
       items.map((p) => p.id),
     );
     return new PaginatedResult(
-      items.map((p) => toPostResponse(p, liked.has(p.id))),
+      items.map((p) => toPostResponse(p, reactions.get(p.id) ?? null)),
       total,
       query.page,
       query.limit,
@@ -113,8 +113,8 @@ export class PostsService {
     if (!post || post.visibility === PostVisibility.DELETED) {
       throw new NotFoundException('Publicación no encontrada');
     }
-    const liked = await this.likedSet(currentUserId, [post.id]);
-    return toPostResponse(post, liked.has(post.id));
+    const reactions = await this.reactionMap(currentUserId, [post.id]);
+    return toPostResponse(post, reactions.get(post.id) ?? null);
   }
 
   async update(id: string, userId: string, dto: UpdatePostDto): Promise<PostResponseDto> {
@@ -148,6 +148,11 @@ export class PostsService {
   /** Ajuste de contador de likes (usado por ReactionsService). */
   incrementLikes(postId: string, delta: number): Promise<unknown> {
     return this.postRepo.increment({ id: postId }, 'likesCount', delta);
+  }
+
+  /** Ajuste de contador de dislikes (usado por ReactionsService). */
+  incrementDislikes(postId: string, delta: number): Promise<unknown> {
+    return this.postRepo.increment({ id: postId }, 'dislikesCount', delta);
   }
 
   /** Ajuste de contador de reportes (usado por ReportsService en fase 2). */

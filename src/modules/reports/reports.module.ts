@@ -31,5 +31,6 @@ import { ReportAnalysisService } from './analysis/report-analysis.service';
   ],
   controllers: [ReportsController],
   providers: [ReportsService, AiVisionService, ModerationService, ReportAnalysisService],
+  exports: [ReportsService],
 })
 export class ReportsModule {}

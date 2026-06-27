@@ -68,6 +68,10 @@ export class Post extends BaseEntity {
   likesCount: number;
 
   @ApiProperty()
+  @Column({ name: 'dislikes_count', type: 'int', default: 0 })
+  dislikesCount: number;
+
+  @ApiProperty()
   @Column({ name: 'comments_count', type: 'int', default: 0 })
   commentsCount: number;
 

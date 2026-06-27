@@ -1,11 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, Length } from 'class-validator';
-import { ReportReason } from '@common/enums/report-reason.enum';
+import { IsIn, IsOptional, IsString, Length } from 'class-validator';
+
+export type CreateReportReason =
+  | 'FALSE_INFORMATION'
+  | 'INAPPROPRIATE'
+  | 'SPAM'
+  | 'OTHER'
+  | 'FALSE_INFO'
+  | 'OFFENSIVE'
+  | 'DANGEROUS';
 
 export class CreateReportDto {
-  @ApiProperty({ enum: ReportReason })
-  @IsEnum(ReportReason)
-  reason: ReportReason;
+  @ApiProperty({
+    enum: ['FALSE_INFORMATION', 'SPAM', 'INAPPROPRIATE', 'OTHER'],
+  })
+  @IsIn(['FALSE_INFORMATION', 'INAPPROPRIATE', 'SPAM', 'OTHER', 'FALSE_INFO', 'OFFENSIVE', 'DANGEROUS'])
+  reason: CreateReportReason;
 
   @ApiPropertyOptional({ example: 'Información falsa, no hay tal bloqueo' })
   @IsOptional()
