@@ -1,4 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  BadRequestException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { AiConfig } from '@core/config/configuration';
@@ -99,6 +105,54 @@ export class ChatbotService {
       this.logger.warn(`IA no disponible, uso respuesta determinista: ${this.errMsg(error)}`);
       return { reply: deterministic, incidents, usedAi: false };
     }
+  }
+
+  /** Transcribe audio a texto con la API de OpenAI (Whisper). */
+  async transcribe(file?: Express.Multer.File): Promise<{ text: string }> {
+    if (!file || !file.buffer?.length) {
+      throw new BadRequestException('Audio requerido');
+    }
+    const apiKey = this.ai.openaiApiKey;
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'OPENAI_API_KEY no está configurada en el servidor',
+      );
+    }
+
+    const form = new FormData();
+    const blob = new Blob([new Uint8Array(file.buffer)], {
+      type: file.mimetype || 'audio/m4a',
+    });
+    form.append('file', blob, file.originalname || 'audio.m4a');
+    form.append('model', this.ai.whisperModel);
+    form.append('language', 'es');
+    form.append(
+      'prompt',
+      'Transcripción en español de Bolivia para la app MAPIA. Vocabulario probable: ' +
+        'La Paz, El Alto, Sopocachi, Miraflores, Santa Cruz, Cochabamba, bloqueo, ' +
+        'corte de servicio, avasallamiento, sobreprecio, combustible, incidencia.',
+    );
+
+    let response: Response;
+    try {
+      response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}` },
+        body: form,
+      });
+    } catch (error) {
+      this.logger.error(`OpenAI transcripción, error de red: ${this.errMsg(error)}`);
+      throw new BadGatewayException('No se pudo contactar al servicio de transcripción');
+    }
+
+    if (!response.ok) {
+      const detail = await response.text();
+      this.logger.error(`OpenAI transcripción ${response.status}: ${detail}`);
+      throw new BadGatewayException('El servicio de transcripción devolvió un error');
+    }
+
+    const json = (await response.json()) as { text?: string };
+    return { text: (json.text ?? '').trim() };
   }
 
   /** Traduce el mensaje libre del usuario a filtros de incidencias. */

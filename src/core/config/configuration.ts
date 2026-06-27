@@ -53,6 +53,8 @@ export interface AiConfig {
   apiKey: string; // solo para AI Studio (fallback)
   autoPublishThreshold: number;
   reviewThreshold: number;
+  openaiApiKey: string; // transcripción de audio (Whisper)
+  whisperModel: string;
 }
 
 export interface GeoConfig {
@@ -123,6 +125,8 @@ export default () => ({
     apiKey: process.env.GEMINI_API_KEY ?? '',
     autoPublishThreshold: parseFloat(process.env.AI_AUTO_PUBLISH_THRESHOLD ?? '0.85'),
     reviewThreshold: parseFloat(process.env.AI_REVIEW_THRESHOLD ?? '0.6'),
+    openaiApiKey: process.env.OPENAI_API_KEY ?? '',
+    whisperModel: process.env.OPENAI_TRANSCRIBE_MODEL ?? 'whisper-1',
   } as AiConfig,
 
   geo: {
