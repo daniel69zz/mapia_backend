@@ -53,9 +53,7 @@ export class ReportsController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Analizar una foto con IA (Vertex/Gemini) y crear el reporte' })
   @ApiConsumes('multipart/form-data')
-  @UseInterceptors(
-    FileInterceptor('image', { limits: { fileSize: MAX_REPORT_IMAGE_BYTES } }),
-  )
+  @UseInterceptors(FileInterceptor('image', { limits: { fileSize: MAX_REPORT_IMAGE_BYTES } }))
   analyzePhoto(
     @CurrentUser('userId') userId: string,
     @UploadedFile() image: Express.Multer.File | undefined,

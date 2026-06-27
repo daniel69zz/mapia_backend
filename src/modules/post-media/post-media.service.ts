@@ -53,7 +53,10 @@ export class PostMediaService {
   }
 
   async remove(mediaId: string, userId: string): Promise<{ success: true }> {
-    const media = await this.mediaRepo.findOne({ where: { id: mediaId }, relations: { post: true } });
+    const media = await this.mediaRepo.findOne({
+      where: { id: mediaId },
+      relations: { post: true },
+    });
     if (!media) {
       throw new NotFoundException('Media no encontrada');
     }

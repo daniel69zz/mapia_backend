@@ -26,9 +26,7 @@ export const dataSourceOptions: DataSourceOptions = {
   // Globs: en dev (ts-node) toma .ts; tras compilar toma .js en dist/.
   entities: ['src/**/*.entity.{ts,js}', 'dist/**/*.entity.js'],
   migrations: [
-    isTsRuntime
-      ? 'src/core/database/migrations/*.{ts,js}'
-      : 'dist/core/database/migrations/*.js',
+    isTsRuntime ? 'src/core/database/migrations/*.{ts,js}' : 'dist/core/database/migrations/*.js',
   ],
   migrationsTableName: 'mapia_migrations',
 };

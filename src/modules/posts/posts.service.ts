@@ -25,7 +25,10 @@ export class PostsService {
   ) {}
 
   /** Devuelve el conjunto de postIds (de la lista dada) que el usuario ya likeó. */
-  private async likedSet(currentUserId: string | undefined, postIds: string[]): Promise<Set<string>> {
+  private async likedSet(
+    currentUserId: string | undefined,
+    postIds: string[],
+  ): Promise<Set<string>> {
     if (!currentUserId || postIds.length === 0) {
       return new Set<string>();
     }
@@ -69,7 +72,10 @@ export class PostsService {
       skip: query.skip,
       take: query.limit,
     });
-    const liked = await this.likedSet(currentUserId, items.map((p) => p.id));
+    const liked = await this.likedSet(
+      currentUserId,
+      items.map((p) => p.id),
+    );
     return new PaginatedResult(
       items.map((p) => toPostResponse(p, liked.has(p.id))),
       total,
@@ -90,7 +96,10 @@ export class PostsService {
       skip: query.skip,
       take: query.limit,
     });
-    const liked = await this.likedSet(currentUserId, items.map((p) => p.id));
+    const liked = await this.likedSet(
+      currentUserId,
+      items.map((p) => p.id),
+    );
     return new PaginatedResult(
       items.map((p) => toPostResponse(p, liked.has(p.id))),
       total,

@@ -12,12 +12,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import {
-  ApiBearerAuth,
-  ApiConsumes,
-  ApiOperation,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { Public } from '@common/decorators/public.decorator';
 import { Profile } from './entities/profile.entity';
@@ -42,10 +37,7 @@ export class ProfilesController {
 
   @Patch('me')
   @ApiOperation({ summary: 'Actualizar mi perfil' })
-  updateMe(
-    @CurrentUser('userId') userId: string,
-    @Body() dto: UpdateProfileDto,
-  ): Promise<Profile> {
+  updateMe(@CurrentUser('userId') userId: string, @Body() dto: UpdateProfileDto): Promise<Profile> {
     return this.profilesService.updateMe(userId, dto);
   }
 

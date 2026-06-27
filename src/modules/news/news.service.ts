@@ -17,9 +17,24 @@ interface KnownPlace {
  */
 const KNOWN_PLACES: KnownPlace[] = [
   { keywords: ['el alto'], label: 'El Alto', lat: -16.5047, lng: -68.1633 },
-  { keywords: ['la paz', 'sopocachi', 'miraflores', 'san miguel', 'calacoto'], label: 'La Paz', lat: -16.5, lng: -68.15 },
-  { keywords: ['santa cruz', 'montero', 'warnes'], label: 'Santa Cruz', lat: -17.7833, lng: -63.1821 },
-  { keywords: ['cochabamba', 'quillacollo', 'sacaba'], label: 'Cochabamba', lat: -17.3895, lng: -66.1568 },
+  {
+    keywords: ['la paz', 'sopocachi', 'miraflores', 'san miguel', 'calacoto'],
+    label: 'La Paz',
+    lat: -16.5,
+    lng: -68.15,
+  },
+  {
+    keywords: ['santa cruz', 'montero', 'warnes'],
+    label: 'Santa Cruz',
+    lat: -17.7833,
+    lng: -63.1821,
+  },
+  {
+    keywords: ['cochabamba', 'quillacollo', 'sacaba'],
+    label: 'Cochabamba',
+    lat: -17.3895,
+    lng: -66.1568,
+  },
   { keywords: ['oruro'], label: 'Oruro', lat: -17.9833, lng: -67.15 },
   { keywords: ['potosi'], label: 'Potosí', lat: -19.5836, lng: -65.7531 },
   { keywords: ['sucre', 'chuquisaca'], label: 'Sucre', lat: -19.0333, lng: -65.2627 },
@@ -34,15 +49,42 @@ const KNOWN_PLACES: KnownPlace[] = [
 const CATEGORY_RULES: { category: MapNewsCategory; keywords: string[] }[] = [
   {
     category: 'bloqueo',
-    keywords: ['bloqueo', 'bloquea', 'marcha', 'paro', 'protesta', 'manifestaci', 'huelga', 'avasalla'],
+    keywords: [
+      'bloqueo',
+      'bloquea',
+      'marcha',
+      'paro',
+      'protesta',
+      'manifestaci',
+      'huelga',
+      'avasalla',
+    ],
   },
   {
     category: 'corte_servicio',
-    keywords: ['corte de agua', 'corte de luz', 'sin agua', 'sin luz', 'apagon', 'racionamiento', 'corte de gas'],
+    keywords: [
+      'corte de agua',
+      'corte de luz',
+      'sin agua',
+      'sin luz',
+      'apagon',
+      'racionamiento',
+      'corte de gas',
+    ],
   },
   {
     category: 'evento',
-    keywords: ['festival', 'concierto', 'fiesta', 'feria', 'carnaval', 'entrada', 'festividad', 'evento', 'expo'],
+    keywords: [
+      'festival',
+      'concierto',
+      'fiesta',
+      'feria',
+      'carnaval',
+      'entrada',
+      'festividad',
+      'evento',
+      'expo',
+    ],
   },
   {
     category: 'venta',
@@ -64,7 +106,12 @@ export class NewsService {
    * responde o ninguna noticia es localizable, devuelve una lista vacía.
    */
   async getTodayMapNews(): Promise<MapNewsItem[]> {
-    let rawItems: { title: string; url: string; description: string | null; publishedAt: string }[] = [];
+    let rawItems: {
+      title: string;
+      url: string;
+      description: string | null;
+      publishedAt: string;
+    }[] = [];
     for (const url of NewsService.rssUrls) {
       try {
         const xml = await this.fetchRss(url);
@@ -74,7 +121,9 @@ export class NewsService {
           break;
         }
       } catch (error) {
-        this.logger.warn(`RSS ${url} falló: ${error instanceof Error ? error.message : String(error)}`);
+        this.logger.warn(
+          `RSS ${url} falló: ${error instanceof Error ? error.message : String(error)}`,
+        );
       }
     }
     if (rawItems.length === 0) return [];
@@ -116,12 +165,19 @@ export class NewsService {
     return response.text();
   }
 
-  private parseRss(xml: string): { title: string; url: string; description: string | null; publishedAt: string }[] {
+  private parseRss(
+    xml: string,
+  ): { title: string; url: string; description: string | null; publishedAt: string }[] {
     const parsed = this.parser.parse(xml) as { rss?: { channel?: { item?: unknown } } };
     const rawItems = parsed.rss?.channel?.item;
     const items = Array.isArray(rawItems) ? rawItems : rawItems ? [rawItems] : [];
 
-    const result: { title: string; url: string; description: string | null; publishedAt: string }[] = [];
+    const result: {
+      title: string;
+      url: string;
+      description: string | null;
+      publishedAt: string;
+    }[] = [];
     for (const raw of items) {
       if (!this.isRecord(raw)) continue;
       const title = this.asText(raw.title);
@@ -176,10 +232,7 @@ export class NewsService {
   }
 
   private normalize(value: string): string {
-    return value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '');
+    return value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   }
 
   private asText(value: unknown): string | undefined {

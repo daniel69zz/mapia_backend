@@ -43,9 +43,7 @@ export class VertexGeminiService implements IImageAnalyzer {
       );
     }
     if (this.config.useVertex && !this.config.project) {
-      throw new ServiceUnavailableException(
-        'Falta GOOGLE_CLOUD_PROJECT para usar Vertex AI.',
-      );
+      throw new ServiceUnavailableException('Falta GOOGLE_CLOUD_PROJECT para usar Vertex AI.');
     }
     if (!this.client) {
       this.client = this.config.useVertex
@@ -115,7 +113,9 @@ export class VertexGeminiService implements IImageAnalyzer {
   }
 
   /** Tolerante a basura alrededor del JSON; valida y acota cada campo. */
-  private normalize(text: string): Omit<AiImageAnalysis, 'raw' | 'model' | 'provider' | 'latencyMs'> {
+  private normalize(
+    text: string,
+  ): Omit<AiImageAnalysis, 'raw' | 'model' | 'provider' | 'latencyMs'> {
     let obj: Record<string, unknown>;
     try {
       const clean = text.replace(/```json|```/g, '').trim();

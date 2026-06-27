@@ -41,7 +41,11 @@ export class MapService {
 
   /** Publicaciones cercanas a un punto, ordenadas por distancia (PostGIS). */
   async nearby(query: MapNearbyQueryDto): Promise<MapMarkerDto[]> {
-    const meters = clampRadiusToMeters(query.radiusKm, this.geo.defaultRadiusKm, this.geo.maxRadiusKm);
+    const meters = clampRadiusToMeters(
+      query.radiusKm,
+      this.geo.defaultRadiusKm,
+      this.geo.maxRadiusKm,
+    );
 
     const qb = this.baseMarkerQuery()
       .andWhere(
@@ -117,28 +121,27 @@ export class MapService {
   }
 
   async summary(query: MapAlertsQueryDto) {
-    const [totalAlerts, highRiskAlerts, productRows, departmentRows, latest] =
-      await Promise.all([
-        this.filteredAlertsQuery(query).getCount(),
-        this.filteredAlertsQuery({ ...query, severity: 'high' }).getCount(),
-        this.filteredAlertsQuery(query)
-          .select('report.product', 'value')
-          .addSelect('COUNT(*)', 'count')
-          .andWhere('report.product IS NOT NULL')
-          .groupBy('report.product')
-          .orderBy('count', 'DESC')
-          .limit(1)
-          .getRawMany<{ value: string; count: string }>(),
-        this.filteredAlertsQuery(query)
-          .select('report.department', 'value')
-          .addSelect('COUNT(*)', 'count')
-          .andWhere('report.department IS NOT NULL')
-          .groupBy('report.department')
-          .orderBy('count', 'DESC')
-          .limit(1)
-          .getRawMany<{ value: string; count: string }>(),
-        this.filteredAlertsQuery(query).orderBy('report.createdAt', 'DESC').getOne(),
-      ]);
+    const [totalAlerts, highRiskAlerts, productRows, departmentRows, latest] = await Promise.all([
+      this.filteredAlertsQuery(query).getCount(),
+      this.filteredAlertsQuery({ ...query, severity: 'high' }).getCount(),
+      this.filteredAlertsQuery(query)
+        .select('report.product', 'value')
+        .addSelect('COUNT(*)', 'count')
+        .andWhere('report.product IS NOT NULL')
+        .groupBy('report.product')
+        .orderBy('count', 'DESC')
+        .limit(1)
+        .getRawMany<{ value: string; count: string }>(),
+      this.filteredAlertsQuery(query)
+        .select('report.department', 'value')
+        .addSelect('COUNT(*)', 'count')
+        .andWhere('report.department IS NOT NULL')
+        .groupBy('report.department')
+        .orderBy('count', 'DESC')
+        .limit(1)
+        .getRawMany<{ value: string; count: string }>(),
+      this.filteredAlertsQuery(query).orderBy('report.createdAt', 'DESC').getOne(),
+    ]);
 
     return {
       totalAlerts,

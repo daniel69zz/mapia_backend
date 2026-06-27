@@ -42,10 +42,7 @@ export class ReactionsService {
     return { liked: false };
   }
 
-  async listByPost(
-    postId: string,
-    query: PaginationQueryDto,
-  ): Promise<PaginatedResult<Reaction>> {
+  async listByPost(postId: string, query: PaginationQueryDto): Promise<PaginatedResult<Reaction>> {
     await this.postsService.getVisibleEntityOrFail(postId);
     const [items, total] = await this.reactionRepo.findAndCount({
       where: { postId },

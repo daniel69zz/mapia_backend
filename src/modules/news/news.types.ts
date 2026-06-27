@@ -1,10 +1,5 @@
 /** Categorías de noticias geolocalizadas que entiende el mapa del frontend. */
-export type MapNewsCategory =
-  | 'evento'
-  | 'bloqueo'
-  | 'corte_servicio'
-  | 'venta'
-  | 'noticia';
+export type MapNewsCategory = 'evento' | 'bloqueo' | 'corte_servicio' | 'venta' | 'noticia';
 
 /**
  * Noticia lista para pintarse como marcador en el mapa.

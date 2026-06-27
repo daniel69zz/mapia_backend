@@ -1,13 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import {
-  IsEnum,
-  IsLatitude,
-  IsLongitude,
-  IsOptional,
-  IsString,
-  Length,
-} from 'class-validator';
+import { IsEnum, IsLatitude, IsLongitude, IsOptional, IsString, Length } from 'class-validator';
 import { PostType } from '@common/enums/post.enums';
 
 export class CreatePostDto {

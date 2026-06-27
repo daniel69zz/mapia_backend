@@ -38,9 +38,7 @@ export class SupabaseStorageService implements IStorageService {
       throw new BadRequestException(`No se pudo subir el archivo: ${error.message}`);
     }
 
-    const { data } = this.client.storage
-      .from(this.config.supabaseBucket)
-      .getPublicUrl(storageKey);
+    const { data } = this.client.storage.from(this.config.supabaseBucket).getPublicUrl(storageKey);
 
     return { storageKey, url: data.publicUrl };
   }

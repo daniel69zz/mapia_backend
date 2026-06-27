@@ -1,10 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  Column,
-  Entity,
-  Index,
-  OneToMany,
-} from 'typeorm';
+import { Column, Entity, Index, OneToMany } from 'typeorm';
 import { BaseEntity } from '@common/entities/base.entity';
 import { ReportCategory } from '@core/ai/ai.types';
 import { AlertReportImage } from './alert-report-image.entity';

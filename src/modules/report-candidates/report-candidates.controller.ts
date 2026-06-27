@@ -38,10 +38,7 @@ export class ReportCandidatesController {
   @Public()
   @Patch('report-candidates/:id/status')
   @ApiOperation({ summary: 'Actualizar el estado de un candidato a informe' })
-  updateStatus(
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: UpdateCandidateStatusDto,
-  ) {
+  updateStatus(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCandidateStatusDto) {
     return this.service.updateStatus(id, dto);
   }
 

@@ -1,7 +1,7 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { PostType } from '@common/enums/post.enums';
+import { PostStatus, PostType, PostVisibility } from '@common/enums/post.enums';
 import { Post } from '@modules/posts/entities/post.entity';
 import { PostsService } from '@modules/posts/posts.service';
 import {
@@ -21,8 +21,33 @@ export interface GeneratedCitizenReport {
   note: string;
 }
 
+export interface FeaturedReportCandidate {
+  id: string;
+  postId: string;
+  title: string;
+  summary: string;
+  category: ReportCandidateCategory;
+  status: 'pendiente_revision';
+  priority: ReportCandidatePriority;
+  locationText: string | null;
+  lat: number;
+  lng: number;
+  evidenceUrls: string[];
+  citizenSupportCount: number;
+  commentsCount: number;
+  createdAt: Date;
+  aiSummary: string;
+  suggestedSolution: string;
+  rejectionReason: null;
+  authorReputationScore: number | null;
+  authorPostsCount: number;
+}
+
 /** Categoría + prioridad por defecto según el tipo de publicación. */
-const TYPE_MAP: Record<PostType, { category: ReportCandidateCategory; priority: ReportCandidatePriority }> = {
+const TYPE_MAP: Record<
+  PostType,
+  { category: ReportCandidateCategory; priority: ReportCandidatePriority }
+> = {
   [PostType.BLOCKADE]: { category: 'bloqueo', priority: 'alta' },
   [PostType.SERVICE_CUT]: { category: 'corte_servicio', priority: 'alta' },
   [PostType.TRAFFIC]: { category: 'transporte', priority: 'media' },
@@ -45,8 +70,10 @@ const KEYWORD_CATEGORIES: { category: ReportCandidateCategory; keywords: string[
 ];
 
 const SOLUTIONS: Record<ReportCandidateCategory, string> = {
-  bloqueo: 'Coordinar con la Policía y la Alcaldía para habilitar vías alternas y mediar el conflicto.',
-  corte_servicio: 'Notificar a la empresa de servicios (agua/luz/gas) para restablecer el suministro.',
+  bloqueo:
+    'Coordinar con la Policía y la Alcaldía para habilitar vías alternas y mediar el conflicto.',
+  corte_servicio:
+    'Notificar a la empresa de servicios (agua/luz/gas) para restablecer el suministro.',
   basura: 'Solicitar al servicio municipal de aseo el recojo y limpieza de la zona.',
   bache: 'Reportar a la unidad de mantenimiento vial para el bacheo de la calzada.',
   alumbrado: 'Solicitar a la empresa eléctrica/Alcaldía la reposición del alumbrado público.',
@@ -62,12 +89,27 @@ export class ReportCandidatesService {
   constructor(
     @InjectRepository(ReportCandidate)
     private readonly candidateRepo: Repository<ReportCandidate>,
+    @InjectRepository(Post)
+    private readonly postRepo: Repository<Post>,
     private readonly postsService: PostsService,
   ) {}
 
   /** Lista de candidatos, más recientes primero. */
-  async findAll(): Promise<{ items: ReportCandidate[]; count: number }> {
-    const items = await this.candidateRepo.find({ order: { createdAt: 'DESC' }, take: 200 });
+  async findAll(): Promise<{ items: FeaturedReportCandidate[]; count: number }> {
+    const posts = await this.postRepo
+      .createQueryBuilder('post')
+      .leftJoinAndSelect('post.author', 'author')
+      .leftJoinAndSelect('author.profile', 'profile')
+      .where('post.visibility = :visibility', { visibility: PostVisibility.PUBLIC })
+      .andWhere('post.status = :status', { status: PostStatus.PUBLISHED })
+      .orderBy('post.likesCount', 'DESC')
+      .addOrderBy('profile.likesCount', 'DESC')
+      .addOrderBy('post.commentsCount', 'DESC')
+      .addOrderBy('post.createdAt', 'DESC')
+      .take(20)
+      .getMany();
+
+    const items = posts.map((post) => this.toFeaturedCandidate(post));
     return { items, count: items.length };
   }
 
@@ -102,14 +144,11 @@ export class ReportCandidatesService {
 
   /** Actualiza el estado del candidato (revisión / informe). */
   async updateStatus(id: string, dto: UpdateCandidateStatusDto): Promise<ReportCandidate> {
-    const candidate = await this.candidateRepo.findOne({ where: { id } });
-    if (!candidate) {
-      throw new NotFoundException('Candidato a informe no encontrado');
-    }
-    candidate.status = dto.status;
-    candidate.rejectionReason =
-      dto.status === 'rechazado' ? dto.rejectionReason ?? candidate.rejectionReason ?? null : null;
-    return this.candidateRepo.save(candidate);
+    void id;
+    void dto;
+    throw new BadRequestException(
+      'Los candidatos para alcaldia son un ranking decorativo y no se aprueban, rechazan ni incluyen.',
+    );
   }
 
   /**
@@ -176,7 +215,57 @@ export class ReportCandidatesService {
     )}`;
   }
 
-  private buildReportBody(candidates: ReportCandidate[], municipality: string, generatedAt: Date): string {
+  private toFeaturedCandidate(post: Post): FeaturedReportCandidate {
+    const { category, priority } = this.classify(post);
+    const profile = post.author?.profile;
+
+    return {
+      id: `featured-${post.id}`,
+      postId: post.id,
+      title: post.title,
+      summary: this.truncate(post.description, 400),
+      category,
+      status: 'pendiente_revision',
+      priority,
+      locationText: post.address,
+      lat: post.latitude,
+      lng: post.longitude,
+      evidenceUrls: [],
+      citizenSupportCount: post.likesCount,
+      commentsCount: post.commentsCount,
+      createdAt: post.createdAt,
+      aiSummary: this.buildAiSummary(post, category),
+      suggestedSolution: SOLUTIONS[category],
+      rejectionReason: null,
+      authorReputationScore: profile
+        ? this.calculateReputationScore(
+            profile.postsCount,
+            profile.likesCount,
+            profile.followersCount,
+          )
+        : null,
+      authorPostsCount: profile?.postsCount ?? 0,
+    };
+  }
+
+  private calculateReputationScore(
+    postsCount: number,
+    likesCount: number,
+    followersCount: number,
+  ): number | null {
+    if (postsCount <= 0) return null;
+    const averageLikes = likesCount / Math.max(postsCount, 1);
+    const likesScore = Math.min(Math.max(averageLikes / 50, 0), 1) * 45;
+    const communityScore = Math.min(Math.max(followersCount / 500, 0), 1) * 25;
+    const consistencyScore = Math.min(Math.max(postsCount / 20, 0), 1) * 20;
+    return Math.round(10 + likesScore + communityScore + consistencyScore);
+  }
+
+  private buildReportBody(
+    candidates: ReportCandidate[],
+    municipality: string,
+    generatedAt: Date,
+  ): string {
     const lines: string[] = [];
     lines.push(`INFORME CIUDADANO - ${municipality}`);
     lines.push(`Fecha de generación: ${generatedAt.toLocaleString('es-BO')}`);
@@ -205,7 +294,9 @@ export class ReportCandidatesService {
         if (candidate.suggestedSolution) {
           lines.push(`   Solución sugerida: ${candidate.suggestedSolution}`);
         }
-        lines.push(`   Apoyo ciudadano: ${candidate.citizenSupportCount} | Comentarios: ${candidate.commentsCount}`);
+        lines.push(
+          `   Apoyo ciudadano: ${candidate.citizenSupportCount} | Comentarios: ${candidate.commentsCount}`,
+        );
         lines.push('');
         index += 1;
       }
@@ -220,9 +311,6 @@ export class ReportCandidatesService {
   }
 
   private normalize(value: string): string {
-    return value
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '');
+    return value.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
   }
 }

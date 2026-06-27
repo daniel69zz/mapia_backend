@@ -25,10 +25,7 @@ export class ReactionsController {
   @Post('like')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Dar like a una publicación' })
-  like(
-    @Param('postId', ParseUUIDPipe) postId: string,
-    @CurrentUser('userId') userId: string,
-  ) {
+  like(@Param('postId', ParseUUIDPipe) postId: string, @CurrentUser('userId') userId: string) {
     return this.reactionsService.like(postId, userId);
   }
 
@@ -36,10 +33,7 @@ export class ReactionsController {
   @Delete('like')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Quitar like' })
-  unlike(
-    @Param('postId', ParseUUIDPipe) postId: string,
-    @CurrentUser('userId') userId: string,
-  ) {
+  unlike(@Param('postId', ParseUUIDPipe) postId: string, @CurrentUser('userId') userId: string) {
     return this.reactionsService.unlike(postId, userId);
   }
 

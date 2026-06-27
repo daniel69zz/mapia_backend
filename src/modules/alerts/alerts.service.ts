@@ -62,7 +62,11 @@ export class AlertsService {
 
   /** Publicaciones cercanas de un tipo concreto (compactas, ordenadas por distancia). */
   async nearbyByType(query: { lat: number; lng: number; radiusKm?: number; type: PostType }) {
-    const meters = clampRadiusToMeters(query.radiusKm, this.geo.defaultRadiusKm, this.geo.maxRadiusKm);
+    const meters = clampRadiusToMeters(
+      query.radiusKm,
+      this.geo.defaultRadiusKm,
+      this.geo.maxRadiusKm,
+    );
 
     const rows = await this.postRepo
       .createQueryBuilder('post')

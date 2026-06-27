@@ -39,10 +39,7 @@ export class CommentsService {
     });
   }
 
-  async findByPost(
-    postId: string,
-    query: PaginationQueryDto,
-  ): Promise<PaginatedResult<Comment>> {
+  async findByPost(postId: string, query: PaginationQueryDto): Promise<PaginatedResult<Comment>> {
     await this.postsService.getVisibleEntityOrFail(postId);
     const [items, total] = await this.commentRepo.findAndCount({
       where: { postId },

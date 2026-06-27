@@ -139,11 +139,7 @@ export class ReportsService {
     };
   }
 
-  async create(
-    postId: string,
-    reporterId: string,
-    dto: CreateReportDto,
-  ): Promise<ContentReport> {
+  async create(postId: string, reporterId: string, dto: CreateReportDto): Promise<ContentReport> {
     await this.postsService.getVisibleEntityOrFail(postId);
 
     // Un usuario no reporta dos veces la misma publicación.
@@ -231,13 +227,23 @@ function detectAlertType(text: string, product: string | null): AlertType {
   if (product === 'gasolina' || product === 'diesel' || text.includes('combustible')) {
     return 'combustible';
   }
-  if (text.includes('no hay') || text.includes('agot') || text.includes('sin stock') || text.includes('falta')) {
+  if (
+    text.includes('no hay') ||
+    text.includes('agot') ||
+    text.includes('sin stock') ||
+    text.includes('falta')
+  ) {
     return 'producto_no_disponible';
   }
   if (text.includes('stock bajo') || text.includes('poco') || text.includes('escase')) {
     return 'stock_bajo';
   }
-  if (text.includes('subio') || text.includes('caro') || text.includes('sobreprecio') || text.includes('bs')) {
+  if (
+    text.includes('subio') ||
+    text.includes('caro') ||
+    text.includes('sobreprecio') ||
+    text.includes('bs')
+  ) {
     return 'sobreprecio';
   }
   if (text.includes('retras') || text.includes('no llego') || text.includes('proveedor')) {
@@ -246,7 +252,11 @@ function detectAlertType(text: string, product: string | null): AlertType {
   return 'otro';
 }
 
-function detectSeverity(text: string, alertType: AlertType, product: string | null): ReportSeverity {
+function detectSeverity(
+  text: string,
+  alertType: AlertType,
+  product: string | null,
+): ReportSeverity {
   if (
     alertType === 'bloqueo' ||
     alertType === 'combustible' ||
@@ -272,7 +282,9 @@ function detectSeverity(text: string, alertType: AlertType, product: string | nu
 }
 
 function detectPrice(text: string): number | null {
-  const match = text.match(/(?:bs\.?|bolivianos?)?\s*(\d+(?:[.,]\d{1,2})?)\s*(?:bs\.?|bolivianos?)?/i);
+  const match = text.match(
+    /(?:bs\.?|bolivianos?)?\s*(\d+(?:[.,]\d{1,2})?)\s*(?:bs\.?|bolivianos?)?/i,
+  );
   return match ? Number(match[1].replace(',', '.')) : null;
 }
 
@@ -345,7 +357,7 @@ function summarize(text: string, product: string, alertType: AlertType): string 
 function confidenceScore(text: string, product: string | null, zone: string): number {
   let score = 0.58;
   if (product) score += 0.12;
-  if (zone) score += 0.10;
+  if (zone) score += 0.1;
   if (detectPrice(normalize(text)) !== null) score += 0.08;
   if (text.length > 30) score += 0.06;
   return Math.min(0.94, Number(score.toFixed(2)));

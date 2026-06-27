@@ -8,10 +8,7 @@ import { VertexGeminiService } from './vertex-gemini.service';
  * GOOGLE_GENAI_USE_VERTEXAI=false y se define GEMINI_API_KEY).
  */
 @Module({
-  providers: [
-    VertexGeminiService,
-    { provide: IMAGE_ANALYZER, useExisting: VertexGeminiService },
-  ],
+  providers: [VertexGeminiService, { provide: IMAGE_ANALYZER, useExisting: VertexGeminiService }],
   exports: [IMAGE_ANALYZER],
 })
 export class AiModule {}
