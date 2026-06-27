@@ -14,7 +14,7 @@ const MAX_ATTEMPTS = 5;
 
 /**
  * Verificación de teléfono por código (OTP).
- * En desarrollo usa el código fijo `123456` (igual que el mock del frontend).
+ * En desarrollo usa el código fijo `123456`.
  * En producción genera un código aleatorio (el envío real por SMS se integra después;
  * por ahora se registra en el log).
  *
