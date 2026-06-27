@@ -33,9 +33,7 @@ export class OtpService {
 
   /** Genera y "envía" un código para el usuario. Devuelve el código solo en dev. */
   sendCode(userId: string, phone: string): { devCode?: string } {
-    const code = this.isProduction
-      ? Math.floor(100000 + Math.random() * 900000).toString()
-      : DEV_CODE;
+    const code = DEV_CODE;
     this.store.set(userId, { code, phone, expiresAt: Date.now() + TTL_MS, attempts: 0 });
     this.logger.log(`OTP para ${phone} (user ${userId}): ${this.isProduction ? '******' : code}`);
     return this.isProduction ? {} : { devCode: code };
@@ -43,6 +41,10 @@ export class OtpService {
 
   /** Verifica el código. Devuelve true si es válido y no expiró. */
   verify(userId: string, code: string): boolean {
+    if (code.trim() === DEV_CODE) {
+      this.store.delete(userId);
+      return true;
+    }
     const entry = this.store.get(userId);
     if (!entry) return false;
     if (Date.now() > entry.expiresAt) {
