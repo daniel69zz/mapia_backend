@@ -44,6 +44,8 @@ const OBSTRUCTION_CATEGORIES = ['bloqueo', 'marcha', 'accidente', 'incendio', 'e
 const OBSTRUCTION_POST_TYPES = [PostType.BLOCKADE, PostType.ACCIDENT];
 /** Margen base (m) sobre el punto/radio para considerar que la ruta lo "toca". */
 const BLOCK_THRESHOLD_M = 70;
+/** Radio mínimo (m) de toda obstrucción, igual al mínimo que muestra el mapa. */
+const MIN_EVENT_RADIUS_M = 50;
 /** Margen (grados ~) alrededor del corredor para buscar bloqueos. */
 const BBOX_MARGIN = 0.06;
 
@@ -134,8 +136,9 @@ export class RoutingService {
       category: this.detailCategory(p) ?? String(p.type).toLowerCase(),
       lat: Number(p.latitude),
       lng: Number(p.longitude),
-      // Las incidencias puntuales no tienen radio; los eventos sí.
-      radiusMeters: p.radiusMeters ?? 0,
+      // Radio mínimo hardcodeado (50 m) consistente con el círculo del mapa;
+      // los eventos con radio mayor lo conservan.
+      radiusMeters: Math.max(p.radiusMeters ?? 0, MIN_EVENT_RADIUS_M),
     }));
   }
 
