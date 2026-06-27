@@ -9,5 +9,6 @@ import { MapService } from './map.service';
   imports: [TypeOrmModule.forFeature([Post, AlertReport])],
   controllers: [MapController],
   providers: [MapService],
+  exports: [MapService],
 })
 export class MapModule {}
