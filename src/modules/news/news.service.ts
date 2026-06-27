@@ -55,7 +55,7 @@ export class NewsService {
   private readonly logger = new Logger(NewsService.name);
 
   private static readonly sourceName = 'El Deber';
-  private static readonly rssUrls = ['https://eldeber.com.bo/rss', 'https://eldeber.com.bo/feed'];
+  private static readonly rssUrls = ['https://eldeber.com.bo/feed', 'https://eldeber.com.bo/rss'];
 
   private readonly parser = new XMLParser({ ignoreAttributes: false, trimValues: true });
 
@@ -64,18 +64,21 @@ export class NewsService {
    * responde o ninguna noticia es localizable, devuelve una lista vacía.
    */
   async getTodayMapNews(): Promise<MapNewsItem[]> {
-    let xml: string | null = null;
+    let rawItems: { title: string; url: string; description: string | null; publishedAt: string }[] = [];
     for (const url of NewsService.rssUrls) {
       try {
-        xml = await this.fetchRss(url);
-        if (xml) break;
+        const xml = await this.fetchRss(url);
+        const parsed = this.parseRss(xml);
+        if (parsed.length > 0) {
+          rawItems = parsed;
+          break;
+        }
       } catch (error) {
         this.logger.warn(`RSS ${url} falló: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
-    if (!xml) return [];
+    if (rawItems.length === 0) return [];
 
-    const rawItems = this.parseRss(xml);
     const recent = this.filterRecent(rawItems);
 
     const mapped: MapNewsItem[] = [];
