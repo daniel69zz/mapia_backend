@@ -17,6 +17,7 @@ import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express
 import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser, AuthenticatedUser } from '@common/decorators/current-user.decorator';
 import { Public } from '@common/decorators/public.decorator';
+import { OptionalAuth } from '@common/decorators/optional-auth.decorator';
 import { Roles } from '@common/decorators/roles.decorator';
 import { Role } from '@common/enums/role.enum';
 import { PaginatedResult, PaginationQueryDto } from '@common/dtos/pagination.dto';
@@ -128,7 +129,7 @@ export class ReportsController {
     return this.aiVision.reject({ userId: user.userId, role: user.role }, id, dto.reason);
   }
 
-  @Public()
+  @OptionalAuth()
   @Post('reports')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Publicar reporte ciudadano para el mapa de alertas' })
@@ -139,10 +140,11 @@ export class ReportsController {
     }),
   )
   createCitizenReport(
+    @CurrentUser('userId') userId: string | undefined,
     @Body() dto: CreateCitizenReportDto,
     @UploadedFiles() files?: { images?: Express.Multer.File[] },
   ) {
-    return this.reportsService.createCitizenReport(dto, files?.images ?? []);
+    return this.reportsService.createCitizenReport(dto, files?.images ?? [], userId);
   }
 
   @Post('posts/:postId/report')

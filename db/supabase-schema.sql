@@ -243,6 +243,7 @@ CREATE TABLE IF NOT EXISTS "reports" (
   "source_text" text,
   "confidence" numeric,
   "status" text NOT NULL DEFAULT 'active',
+  "details" jsonb,
   "created_at" timestamptz NOT NULL DEFAULT now(),
   "updated_at" timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT "pk_reports" PRIMARY KEY ("id"),
@@ -260,6 +261,7 @@ ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "user_id"  uuid;
 ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "category" text;
 ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "tags"     text[] NOT NULL DEFAULT '{}';
 ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "location" geography(Point,4326);
+ALTER TABLE "reports" ADD COLUMN IF NOT EXISTS "details"  jsonb;
 ALTER TABLE "reports" ALTER COLUMN "alert_type" DROP NOT NULL;
 ALTER TABLE "reports" ALTER COLUMN "severity"   DROP NOT NULL;
 
@@ -361,7 +363,9 @@ INSERT INTO "mapia_migrations" ("timestamp","name")
 SELECT v.ts, v.name FROM (VALUES
   (1700000000000, 'InitialSchema1700000000000'),
   (1710000000000, 'AlertReports1710000000000'),
-  (1720000000000, 'AiVisionReports1720000000000')
+  (1720000000000, 'AiVisionReports1720000000000'),
+  (1730000000000, 'ReportCandidates1730000000000'),
+  (1740000000000, 'ReportDetails1740000000000')
 ) AS v(ts, name)
 WHERE NOT EXISTS (
   SELECT 1 FROM "mapia_migrations" m WHERE m."name" = v.name

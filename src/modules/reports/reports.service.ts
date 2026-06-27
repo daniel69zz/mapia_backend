@@ -2,9 +2,11 @@ import { BadRequestException, ConflictException, Inject, Injectable } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '@common/dtos/pagination.dto';
+import { PostType } from '@common/enums/post.enums';
 import { IStorageService, STORAGE_SERVICE } from '@core/storage/storage.types';
 import { IImageAnalyzer, IMAGE_ANALYZER } from '@core/ai/ai.types';
 import { PostsService } from '@modules/posts/posts.service';
+import { PostMedia } from '@modules/post-media/entities/post-media.entity';
 import { ContentReport } from './entities/content-report.entity';
 import { AlertReport, AlertType, ReportSeverity } from './entities/alert-report.entity';
 import { AlertReportImage } from './entities/alert-report-image.entity';
@@ -56,6 +58,8 @@ export class ReportsService {
     private readonly alertReportRepo: Repository<AlertReport>,
     @InjectRepository(AlertReportImage)
     private readonly alertImageRepo: Repository<AlertReportImage>,
+    @InjectRepository(PostMedia)
+    private readonly postMediaRepo: Repository<PostMedia>,
     @Inject(STORAGE_SERVICE)
     private readonly storage: IStorageService,
     @Inject(IMAGE_ANALYZER)
@@ -91,10 +95,7 @@ export class ReportsService {
    * habilitada, refina título/descripción con el análisis de la primera foto.
    * Si la IA está apagada o falla, devuelve el parseo de texto (nunca rompe).
    */
-  async parseCitizenReportWithImages(
-    dto: ParseCitizenReportDto,
-    images: Express.Multer.File[],
-  ) {
+  async parseCitizenReportWithImages(dto: ParseCitizenReportDto, images: Express.Multer.File[]) {
     const base = this.parseCitizenReport(dto);
 
     const image = images?.[0];
@@ -113,9 +114,7 @@ export class ReportsService {
       return {
         ...base,
         title: analysis.title?.trim() ? analysis.title : base.title,
-        description: analysis.description?.trim()
-          ? analysis.description
-          : base.description,
+        description: analysis.description?.trim() ? analysis.description : base.description,
         confidence: Math.max(base.confidence, analysis.confidence),
       };
     } catch {
@@ -127,7 +126,8 @@ export class ReportsService {
   async createCitizenReport(
     dto: CreateCitizenReportDto,
     images: Express.Multer.File[],
-  ): Promise<{ id: string; status: 'created'; message: string }> {
+    userId?: string,
+  ): Promise<{ id: string; postId?: string; status: 'created'; message: string }> {
     this.assertInsideBolivia(dto.latitude, dto.longitude);
     if (images.length > 3) {
       throw new BadRequestException('Solo puedes subir hasta 3 imagenes');
@@ -153,12 +153,14 @@ export class ReportsService {
       sourceText: dto.sourceText ?? null,
       confidence: dto.confidence === undefined ? '0.75' : String(dto.confidence),
       status: 'active',
+      userId: userId ?? null,
       category: (dto.category as AlertReport['category']) ?? null,
       details: parseDetails(dto.details),
     });
 
     const saved = await this.alertReportRepo.save(report);
 
+    const savedImages: AlertReportImage[] = [];
     for (const image of images) {
       const stored = await this.storage.upload({
         buffer: image.buffer,
@@ -166,17 +168,23 @@ export class ReportsService {
         mimeType: image.mimetype,
         folder: `reports/${saved.id}`,
       });
-      await this.alertImageRepo.save(
+      const savedImage = await this.alertImageRepo.save(
         this.alertImageRepo.create({
           reportId: saved.id,
           url: stored.url,
           path: stored.storageKey,
         }),
       );
+      savedImages.push(savedImage);
     }
+
+    const postId = userId
+      ? await this.createPublicationFromReport(userId, saved, savedImages)
+      : undefined;
 
     return {
       id: saved.id,
+      ...(postId ? { postId } : {}),
       status: 'created',
       message: 'Reporte publicado correctamente',
     };
@@ -244,6 +252,42 @@ export class ReportsService {
     if (!inside) {
       throw new BadRequestException('La ubicacion del reporte debe estar dentro de Bolivia');
     }
+  }
+
+  private async createPublicationFromReport(
+    userId: string,
+    report: AlertReport,
+    images: AlertReportImage[],
+  ): Promise<string> {
+    const post = await this.postsService.create(userId, {
+      title: report.title,
+      description: report.description ?? report.sourceText ?? report.title,
+      type: mapReportToPostType(report),
+      latitude: Number(report.latitude),
+      longitude: Number(report.longitude),
+      address: buildReportAddress(report),
+    });
+
+    for (const image of images) {
+      await this.postMediaRepo.save(
+        this.postMediaRepo.create({
+          postId: post.id,
+          url: image.url,
+          storageKey: image.path ?? image.url,
+          type: 'IMAGE',
+        }),
+      );
+    }
+
+    report.details = {
+      ...(report.details ?? {}),
+      linkedPostId: post.id,
+      contentType: 'USER_EVENT',
+      authorType: 'USER',
+    };
+    await this.alertReportRepo.save(report);
+
+    return post.id;
   }
 }
 
@@ -420,4 +464,53 @@ function confidenceScore(text: string, product: string | null, zone: string): nu
   if (detectPrice(normalize(text)) !== null) score += 0.08;
   if (text.length > 30) score += 0.06;
   return Math.min(0.94, Number(score.toFixed(2)));
+}
+
+function mapReportToPostType(report: AlertReport): PostType {
+  const category = normalize(String(report.category ?? ''));
+  const alertType = report.alertType;
+
+  if (
+    [
+      'fiesta',
+      'celebracion',
+      'evento_comunitario',
+      'concierto_libre',
+      'feria',
+      'entrada_folklorica',
+      'cultura',
+      'deporte',
+    ].includes(category)
+  ) {
+    return PostType.PARTY;
+  }
+  if (['descuento', 'promocion', 'abastecimiento', 'combustible'].includes(category)) {
+    return PostType.SALE;
+  }
+  if (category === 'transporte') {
+    return PostType.TRAFFIC;
+  }
+  if (category === 'bloqueo' || category === 'marcha' || alertType === 'bloqueo') {
+    return PostType.BLOCKADE;
+  }
+  if (category === 'accidente') {
+    return PostType.ACCIDENT;
+  }
+  if (category === 'servicio_publico') {
+    return PostType.SERVICE_CUT;
+  }
+  if (category === 'seguridad') {
+    return PostType.SECURITY;
+  }
+  if (category === 'incendio' || category === 'emergencia' || category === 'salud') {
+    return PostType.NEWS;
+  }
+  return PostType.OTHER;
+}
+
+function buildReportAddress(report: AlertReport): string | undefined {
+  const parts = [report.zone, report.municipality, report.department]
+    .map((part) => part?.trim())
+    .filter((part): part is string => Boolean(part));
+  return parts.length ? parts.join(', ') : undefined;
 }

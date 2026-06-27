@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PostsModule } from '@modules/posts/posts.module';
+import { PostMedia } from '@modules/post-media/entities/post-media.entity';
 import { StorageModule } from '@core/storage/storage.module';
 import { AiModule } from '@core/ai/ai.module';
 import { ContentReport } from './entities/content-report.entity';
@@ -22,6 +23,7 @@ import { ReportAnalysisService } from './analysis/report-analysis.service';
       AlertReportImage,
       ReportAiAnalysis,
       ModerationLog,
+      PostMedia,
     ]),
     PostsModule,
     StorageModule,

@@ -45,6 +45,16 @@ export class PostsController {
     return this.postsService.findAll(query, currentUserId);
   }
 
+  @ApiBearerAuth()
+  @Get('me')
+  @ApiOperation({ summary: 'Publicaciones del usuario autenticado' })
+  findMine(
+    @Query() query: QueryPostsDto,
+    @CurrentUser('userId') userId: string,
+  ): Promise<PaginatedResult<PostResponseDto>> {
+    return this.postsService.findByUser(userId, query, userId);
+  }
+
   @OptionalAuth()
   @ApiBearerAuth()
   @Get('user/:userId')
