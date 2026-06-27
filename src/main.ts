@@ -33,6 +33,14 @@ async function bootstrap(): Promise<void> {
   // Prefijo global /api/v1.
   app.setGlobalPrefix(appCfg.apiPrefix);
 
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: false,
+      transform: true,
+    }),
+  );
+
   // Servir archivos locales (solo dev con STORAGE_DRIVER=local).
   if (storageCfg.driver === 'local') {
     app.useStaticAssets(join(process.cwd(), storageCfg.localDir), { prefix: '/static/' });
