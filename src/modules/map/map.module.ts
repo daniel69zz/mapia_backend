@@ -5,11 +5,12 @@ import { AlertReport } from '@modules/reports/entities/alert-report.entity';
 import { MapController } from './map.controller';
 import { MapService } from './map.service';
 import { RoutingService } from './routing.service';
+import { PlacesService } from './places.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Post, AlertReport])],
   controllers: [MapController],
-  providers: [MapService, RoutingService],
+  providers: [MapService, RoutingService, PlacesService],
   exports: [MapService],
 })
 export class MapModule {}

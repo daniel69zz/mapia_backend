@@ -57,6 +57,9 @@ export class PostResponseDto {
   @ApiPropertyOptional()
   address: string | null;
 
+  @ApiPropertyOptional()
+  radiusMeters: number | null;
+
   @ApiProperty()
   isVerified: boolean;
 

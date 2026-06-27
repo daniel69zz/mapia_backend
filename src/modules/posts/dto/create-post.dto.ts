@@ -1,6 +1,16 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsEnum, IsLatitude, IsLongitude, IsOptional, IsString, Length } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsLatitude,
+  IsLongitude,
+  IsOptional,
+  IsString,
+  Length,
+  Max,
+  Min,
+} from 'class-validator';
 import { PostType } from '@common/enums/post.enums';
 
 export class CreatePostDto {
@@ -33,4 +43,12 @@ export class CreatePostDto {
   @IsString()
   @Length(0, 300)
   address?: string;
+
+  @ApiPropertyOptional({ example: 500, description: 'Radio del evento en metros (0 = puntual)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(50000)
+  radiusMeters?: number;
 }

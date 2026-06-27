@@ -1,6 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { XMLParser } from 'fast-xml-parser';
 import { MapNewsCategory, MapNewsItem } from './news.types';
+import { GeneratedNewsPost } from './entities/generated-news-post.entity';
+
+interface RssItem {
+  title: string;
+  url: string;
+  description: string | null;
+  publishedAt: string;
+}
 
 /** Lugar conocido de Bolivia con sus coordenadas aproximadas (centro). */
 interface KnownPlace {
@@ -101,31 +111,33 @@ export class NewsService {
 
   private readonly parser = new XMLParser({ ignoreAttributes: false, trimValues: true });
 
-  /**
-   * Noticias del día geolocalizadas para el mapa. Best-effort: si el RSS no
-   * responde o ninguna noticia es localizable, devuelve una lista vacía.
-   */
-  async getTodayMapNews(): Promise<MapNewsItem[]> {
-    let rawItems: {
-      title: string;
-      url: string;
-      description: string | null;
-      publishedAt: string;
-    }[] = [];
+  constructor(
+    @InjectRepository(GeneratedNewsPost)
+    private readonly repo: Repository<GeneratedNewsPost>,
+  ) {}
+
+  /** Descarga y parsea el primer RSS que devuelva ítems. */
+  private async fetchRssItems(): Promise<RssItem[]> {
     for (const url of NewsService.rssUrls) {
       try {
         const xml = await this.fetchRss(url);
         const parsed = this.parseRss(xml);
-        if (parsed.length > 0) {
-          rawItems = parsed;
-          break;
-        }
+        if (parsed.length > 0) return parsed;
       } catch (error) {
         this.logger.warn(
           `RSS ${url} falló: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
+    return [];
+  }
+
+  /**
+   * Noticias del día geolocalizadas para el mapa. Best-effort: si el RSS no
+   * responde o ninguna noticia es localizable, devuelve una lista vacía.
+   */
+  async getTodayMapNews(): Promise<MapNewsItem[]> {
+    const rawItems = await this.fetchRssItems();
     if (rawItems.length === 0) return [];
 
     const recent = this.filterRecent(rawItems);
@@ -150,6 +162,88 @@ export class NewsService {
       });
     }
     return mapped;
+  }
+
+  /** Publicaciones de noticias persistidas para Explorar (más recientes primero). */
+  async getGeneratedPosts() {
+    const rows = await this.repo.find({ order: { createdAt: 'DESC' }, take: 100 });
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      content: r.content,
+      source: r.source,
+      originalUrl: r.originalUrl,
+      category: r.category,
+      status: r.status,
+      generatedBy: r.generatedBy,
+      isAiGenerated: r.isAiGenerated,
+      mapItemId: r.mapItemId,
+      locationText: r.locationText,
+      lat: r.lat,
+      lng: r.lng,
+      publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+      createdAt: r.createdAt.toISOString(),
+    }));
+  }
+
+  /** Estado de la ingestión de noticias. */
+  async getStatus() {
+    const total = await this.repo.count();
+    const latest = await this.repo.findOne({
+      where: {},
+      order: { createdAt: 'DESC' },
+    });
+    return {
+      lastPollTime: latest ? latest.createdAt.toISOString() : null,
+      totalNewsDetected: total,
+      totalPostsGenerated: total,
+      activeSources: [NewsService.sourceName],
+      configuredInterval: 'Manual / bajo demanda',
+    };
+  }
+
+  /** Ingesta el RSS de El Deber y persiste las noticias nuevas (dedupe por URL). */
+  async refresh(): Promise<{ inserted: number; detected: number }> {
+    const rawItems = await this.fetchRssItems();
+    let inserted = 0;
+
+    for (const item of rawItems) {
+      const exists = await this.repo.findOne({
+        where: { originalUrl: item.url },
+        select: { id: true },
+      });
+      if (exists) continue;
+
+      const text = `${item.title} ${item.description ?? ''}`;
+      const place = this.locate(text);
+      const entity = this.repo.create({
+        title: item.title,
+        content: item.description ?? item.title,
+        source: NewsService.sourceName,
+        originalUrl: item.url,
+        category: this.categorize(text),
+        status: 'published',
+        generatedBy: 'rss_polling',
+        isAiGenerated: true,
+        locationText: place?.label ?? null,
+        lat: place?.lat ?? null,
+        lng: place?.lng ?? null,
+        publishedAt: new Date(item.publishedAt),
+      });
+      try {
+        await this.repo.save(entity);
+        inserted += 1;
+      } catch (error) {
+        // Carrera de duplicados (índice único): se ignora.
+        this.logger.warn(`No se guardó noticia: ${this.errMsg(error)}`);
+      }
+    }
+
+    return { inserted, detected: rawItems.length };
+  }
+
+  private errMsg(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
   }
 
   private async fetchRss(url: string): Promise<string> {

@@ -1,10 +1,12 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { FindOptionsWhere, In, Repository } from 'typeorm';
 import { PaginatedResult } from '@common/dtos/pagination.dto';
 import { PostStatus, PostVisibility } from '@common/enums/post.enums';
+import { IStorageService, STORAGE_SERVICE } from '@core/storage/storage.types';
 import { ProfilesService } from '@modules/profiles/profiles.service';
 import { Reaction } from '@modules/reactions/entities/reaction.entity';
+import { PostMedia } from '@modules/post-media/entities/post-media.entity';
 import { Post } from './entities/post.entity';
 import { CreatePostDto } from './dto/create-post.dto';
 import { UpdatePostDto } from './dto/update-post.dto';
@@ -14,6 +16,14 @@ import { toPostResponse } from './mappers/post.mapper';
 
 const POST_RELATIONS = { author: { profile: true }, media: true } as const;
 
+const IMAGE_MIME = ['image/jpeg', 'image/png', 'image/webp'];
+
+function isAllowedImageMime(mimetype: string, name: string): boolean {
+  if (IMAGE_MIME.includes(mimetype)) return true;
+  const lower = (name ?? '').toLowerCase();
+  return ['.jpg', '.jpeg', '.png', '.webp'].some((ext) => lower.endsWith(ext));
+}
+
 @Injectable()
 export class PostsService {
   constructor(
@@ -21,6 +31,10 @@ export class PostsService {
     private readonly postRepo: Repository<Post>,
     @InjectRepository(Reaction)
     private readonly reactionRepo: Repository<Reaction>,
+    @InjectRepository(PostMedia)
+    private readonly postMediaRepo: Repository<PostMedia>,
+    @Inject(STORAGE_SERVICE)
+    private readonly storage: IStorageService,
     private readonly profilesService: ProfilesService,
   ) {}
 
@@ -39,7 +53,11 @@ export class PostsService {
     return new Map(reactions.map((r) => [r.postId, r.type]));
   }
 
-  async create(authorId: string, dto: CreatePostDto): Promise<PostResponseDto> {
+  async create(
+    authorId: string,
+    dto: CreatePostDto,
+    images: Express.Multer.File[] = [],
+  ): Promise<PostResponseDto> {
     const post = this.postRepo.create({
       authorId,
       title: dto.title,
@@ -48,11 +66,31 @@ export class PostsService {
       latitude: dto.latitude,
       longitude: dto.longitude,
       address: dto.address ?? null,
+      radiusMeters: dto.radiusMeters ?? null,
       // Decisión de proyecto: se publica directo; moderación es reactiva.
       status: PostStatus.PUBLISHED,
       visibility: PostVisibility.PUBLIC,
     });
     const saved = await this.postRepo.save(post);
+
+    for (const image of images) {
+      if (!isAllowedImageMime(image.mimetype, image.originalname)) continue;
+      const stored = await this.storage.upload({
+        buffer: image.buffer,
+        originalName: image.originalname,
+        mimeType: image.mimetype,
+        folder: `posts/${saved.id}`,
+      });
+      await this.postMediaRepo.save(
+        this.postMediaRepo.create({
+          postId: saved.id,
+          url: stored.url,
+          storageKey: stored.storageKey,
+          type: 'IMAGE',
+        }),
+      );
+    }
+
     await this.profilesService.incrementPosts(authorId, 1);
     return this.findOne(saved.id, authorId);
   }

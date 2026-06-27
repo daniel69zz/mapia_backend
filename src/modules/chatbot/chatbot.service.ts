@@ -99,7 +99,7 @@ export class ChatbotService {
     }
 
     try {
-      const reply = await this.composeWithAi(dto.message, incidents);
+      const reply = await this.composeWithAi(dto.message, incidents, dto.history);
       return { reply: reply || deterministic, incidents, usedAi: true };
     } catch (error) {
       this.logger.warn(`IA no disponible, uso respuesta determinista: ${this.errMsg(error)}`);
@@ -210,8 +210,12 @@ export class ChatbotService {
     return `${header}\n${lines.join('\n')}`;
   }
 
-  /** Redacta la respuesta con Gemini usando SOLO las incidencias recuperadas (RAG). */
-  private async composeWithAi(message: string, incidents: IncidentItem[]): Promise<string> {
+  /** Redacta la respuesta con Gemini (RAG) usando memoria corta de la conversación. */
+  private async composeWithAi(
+    message: string,
+    incidents: IncidentItem[],
+    history?: { role: 'user' | 'assistant'; text: string }[],
+  ): Promise<string> {
     const client = this.getClient();
     const compact = incidents.map((it) => ({
       titulo: it.title,
@@ -222,21 +226,53 @@ export class ChatbotService {
     }));
 
     const system = [
-      'Eres el Asistente de MAPIA, un mapa social ciudadano de Bolivia.',
-      'IMPORTANTE: detecta el idioma del mensaje del usuario y RESPONDE EN ESE MISMO IDIOMA',
-      '(español, inglés, portugués, etc.); traduce los datos de las incidencias si hace falta.',
-      'Sé breve, claro y útil.',
-      'Responde ÚNICAMENTE con base en las incidencias proporcionadas en JSON. NO inventes datos.',
-      'Si la lista está vacía, dilo con honestidad y sugiere ampliar la búsqueda.',
-      'Resume cuántas hay y las más relevantes (tipo, severidad, lugar). No uses markdown.',
-    ].join(' ');
+      'Eres MAPIA, el asistente del mapa social ciudadano de Bolivia (La Paz, El Alto, Santa Cruz, etc.).',
+      'Tu trabajo: ayudar a la gente a conocer incidencias y novedades cercanas: bloqueos, marchas,',
+      'cortes de servicio, sobreprecios, combustible, accidentes, eventos y avisos comunitarios.',
+      '',
+      'IDIOMA: detecta el idioma del último mensaje del usuario y responde SIEMPRE en ese mismo idioma;',
+      'traduce los datos de las incidencias si hace falta.',
+      '',
+      'TONO: cercano, claro y breve (2-5 frases). Trato de "vos/tú" amable, sin tecnicismos ni markdown.',
+      '',
+      'REGLAS DE DATOS:',
+      '- Básate ÚNICAMENTE en las incidencias del JSON que se te entrega. NO inventes datos, números ni lugares.',
+      '- Si la lista está vacía, dilo con honestidad y sugiere ampliar la zona/categoría o revisar el mapa.',
+      '- Menciona cuántas hay y las más relevantes (tipo, severidad y lugar) de forma natural.',
+      '- Usa el historial de la conversación para entender referencias ("¿y en El Alto?", "el primero", etc.).',
+      '- Si la pregunta es ambigua, pide una breve aclaración.',
+      '- Para saludos o charla casual responde con cordialidad y recuerda en una frase qué puedes hacer.',
+      '- Cierra, cuando sea útil, invitando a tocar una incidencia para verla en el mapa.',
+    ].join('\n');
 
-    const user = `Pregunta del usuario: "${message}"\n\nIncidencias registradas (JSON):\n${JSON.stringify(compact)}`;
+    type Part = { text: string };
+    const contents: { role: 'user' | 'model'; parts: Part[] }[] = [];
+
+    // Memoria corta: últimos turnos previos.
+    for (const turn of (history ?? []).slice(-8)) {
+      const text = (turn.text ?? '').trim();
+      if (!text) continue;
+      contents.push({
+        role: turn.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text }],
+      });
+    }
+
+    contents.push({
+      role: 'user',
+      parts: [
+        {
+          text: `Mensaje del usuario: "${message}"\n\nIncidencias registradas ahora (JSON):\n${JSON.stringify(
+            compact,
+          )}`,
+        },
+      ],
+    });
 
     const response = await client.models.generateContent({
       model: this.ai.model,
-      contents: [{ role: 'user', parts: [{ text: user }] }],
-      config: { systemInstruction: system, temperature: 0.3 },
+      contents,
+      config: { systemInstruction: system, temperature: 0.4 },
     });
 
     return (response.text ?? '').trim();

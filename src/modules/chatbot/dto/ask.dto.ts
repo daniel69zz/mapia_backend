@@ -1,6 +1,26 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsLatitude, IsLongitude, IsOptional, IsString, Length } from 'class-validator';
+import {
+  IsArray,
+  IsIn,
+  IsLatitude,
+  IsLongitude,
+  IsOptional,
+  IsString,
+  Length,
+  ValidateNested,
+} from 'class-validator';
+
+export class ChatTurnDto {
+  @ApiProperty({ enum: ['user', 'assistant'] })
+  @IsIn(['user', 'assistant'])
+  role: 'user' | 'assistant';
+
+  @ApiProperty()
+  @IsString()
+  @Length(1, 2000)
+  text: string;
+}
 
 export class AskDto {
   @ApiProperty({ example: '¿Hay bloqueos cerca?' })
@@ -19,4 +39,14 @@ export class AskDto {
   @Type(() => Number)
   @IsLongitude()
   lng?: number;
+
+  @ApiPropertyOptional({
+    type: [ChatTurnDto],
+    description: 'Memoria corta: últimos turnos de la conversación',
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => ChatTurnDto)
+  history?: ChatTurnDto[];
 }

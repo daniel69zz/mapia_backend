@@ -8,8 +8,11 @@ import {
   Patch,
   Post as HttpPost,
   Query,
+  UploadedFiles,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '@common/decorators/current-user.decorator';
 import { OptionalAuth } from '@common/decorators/optional-auth.decorator';
 import { PaginatedResult } from '@common/dtos/pagination.dto';
@@ -26,12 +29,19 @@ export class PostsController {
 
   @ApiBearerAuth()
   @HttpPost()
-  @ApiOperation({ summary: 'Crear publicación geolocalizada' })
+  @ApiOperation({ summary: 'Crear publicación geolocalizada (con imágenes opcionales)' })
+  @ApiConsumes('multipart/form-data', 'application/json')
+  @UseInterceptors(
+    FileFieldsInterceptor([{ name: 'images', maxCount: 3 }], {
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
   create(
     @CurrentUser('userId') userId: string,
     @Body() dto: CreatePostDto,
+    @UploadedFiles() files?: { images?: Express.Multer.File[] },
   ): Promise<PostResponseDto> {
-    return this.postsService.create(userId, dto);
+    return this.postsService.create(userId, dto, files?.images ?? []);
   }
 
   @OptionalAuth()
