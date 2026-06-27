@@ -98,7 +98,7 @@ export class ReportsService {
     const base = this.parseCitizenReport(dto);
 
     const image = images?.[0];
-    if (!image || !IMAGE_MIME.includes(image.mimetype)) {
+    if (!image || !isAllowedImage(image)) {
       return base;
     }
 
@@ -133,7 +133,7 @@ export class ReportsService {
       throw new BadRequestException('Solo puedes subir hasta 3 imagenes');
     }
     for (const image of images) {
-      if (!IMAGE_MIME.includes(image.mimetype)) {
+      if (!isAllowedImage(image)) {
         throw new BadRequestException('Las imagenes deben ser JPG, PNG o WEBP');
       }
     }
@@ -245,6 +245,12 @@ export class ReportsService {
       throw new BadRequestException('La ubicacion del reporte debe estar dentro de Bolivia');
     }
   }
+}
+
+function isAllowedImage(file: Express.Multer.File): boolean {
+  if (IMAGE_MIME.includes(file.mimetype)) return true;
+  const name = (file.originalname ?? '').toLowerCase();
+  return ['.jpg', '.jpeg', '.png', '.webp'].some((ext) => name.endsWith(ext));
 }
 
 function parseDetails(raw: string | undefined): Record<string, unknown> | null {

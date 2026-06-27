@@ -147,9 +147,10 @@ export class ReportAnalysisService {
       { text: `Texto del usuario: "${text}"` },
     ];
     for (const img of images.slice(0, MAX_AI_IMAGES)) {
-      if (IMAGE_MIME.includes(img.mimetype)) {
+      const mimeType = resolveImageMime(img);
+      if (mimeType) {
         parts.push({
-          inlineData: { mimeType: img.mimetype, data: img.buffer.toString('base64') },
+          inlineData: { mimeType, data: img.buffer.toString('base64') },
         });
       }
     }
@@ -211,6 +212,16 @@ export class ReportAnalysisService {
 
 function clean(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+/** Devuelve un mimetype de imagen válido por mimetype o por extensión, o null. */
+function resolveImageMime(file: Express.Multer.File): string | null {
+  if (IMAGE_MIME.includes(file.mimetype)) return file.mimetype;
+  const name = (file.originalname ?? '').toLowerCase();
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.webp')) return 'image/webp';
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  return null;
 }
 
 function departmentFromCoords(lat: number, lng: number): string {
