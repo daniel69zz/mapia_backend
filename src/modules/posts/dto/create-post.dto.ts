@@ -64,4 +64,8 @@ export class CreatePostDto {
   @Transform(({ value }) => value === true || value === 'true')
   @IsBoolean()
   showOnMap?: boolean;
+
+  @ApiPropertyOptional({ description: 'Datos adicionales' })
+  @IsOptional()
+  details?: Record<string, any>;
 }

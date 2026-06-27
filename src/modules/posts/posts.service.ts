@@ -1,6 +1,6 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { FindOptionsWhere, In, Repository } from 'typeorm';
+import { FindOptionsWhere, In, Not, Repository } from 'typeorm';
 import { PaginatedResult } from '@common/dtos/pagination.dto';
 import { PostStatus, PostVisibility } from '@common/enums/post.enums';
 import { IStorageService, STORAGE_SERVICE } from '@core/storage/storage.types';
@@ -101,7 +101,12 @@ export class PostsService {
     query: QueryPostsDto,
     currentUserId?: string,
   ): Promise<PaginatedResult<PostResponseDto>> {
-    const where: FindOptionsWhere<Post> = { visibility: PostVisibility.PUBLIC };
+    // El feed muestra contenido de usuario (eventos + incidencias); las noticias
+    // IA viven en la sección Explorar, no en el feed principal.
+    const where: FindOptionsWhere<Post> = {
+      visibility: PostVisibility.PUBLIC,
+      contentType: Not('NEWS'),
+    };
     if (query.type) {
       where.type = query.type;
     }
