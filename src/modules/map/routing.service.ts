@@ -9,7 +9,6 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MapsConfig } from '@core/config/configuration';
 import { PostType, PostVisibility } from '@common/enums/post.enums';
-import { AlertReport } from '@modules/reports/entities/alert-report.entity';
 import { Post } from '@modules/posts/entities/post.entity';
 import { RouteQueryDto } from './dto/route-query.dto';
 
@@ -54,8 +53,6 @@ export class RoutingService {
   private readonly maps: MapsConfig;
 
   constructor(
-    @InjectRepository(AlertReport)
-    private readonly alertRepo: Repository<AlertReport>,
     @InjectRepository(Post)
     private readonly postRepo: Repository<Post>,
     configService: ConfigService,
@@ -111,48 +108,42 @@ export class RoutingService {
     const minLng = Math.min(dto.originLng, dto.destLng) - BBOX_MARGIN;
     const maxLng = Math.max(dto.originLng, dto.destLng) + BBOX_MARGIN;
 
-    // (a) Incidencias ciudadanas (tabla reports) — puntuales (radio 0).
-    const reports = await this.alertRepo
-      .createQueryBuilder('report')
-      .where('report.status = :status', { status: 'active' })
-      .andWhere('report.latitude BETWEEN :minLat AND :maxLat', { minLat, maxLat })
-      .andWhere('report.longitude BETWEEN :minLng AND :maxLng', { minLng, maxLng })
-      .andWhere('(report.category IN (:...cats) OR report.alertType = :bloqueo)', {
-        cats: OBSTRUCTION_CATEGORIES,
-        bloqueo: 'bloqueo',
-      })
-      .limit(200)
-      .getMany();
-
-    // (b) Eventos/publicaciones que obstruyen (tabla posts) — con su RADIO.
+    // Obstrucciones desde la tabla unificada `posts`:
+    //  - eventos que obstruyen (type BLOCKADE/ACCIDENT), con su RADIO
+    //  - incidencias (content_type=INCIDENT) cuya categoría obstruye, puntuales
     const posts = await this.postRepo
       .createQueryBuilder('post')
       .where('post.visibility = :vis', { vis: PostVisibility.PUBLIC })
-      .andWhere('post.type IN (:...types)', { types: OBSTRUCTION_POST_TYPES })
+      .andWhere('post.latitude IS NOT NULL AND post.longitude IS NOT NULL')
       .andWhere('post.latitude BETWEEN :minLat AND :maxLat', { minLat, maxLat })
       .andWhere('post.longitude BETWEEN :minLng AND :maxLng', { minLng, maxLng })
-      .limit(200)
+      .andWhere(
+        `(post.type IN (:...types) OR (post.content_type = :incident AND post.type IN (:...types)) OR (post.content_type = :incident AND (post.details->>'category') IN (:...cats)))`,
+        {
+          types: OBSTRUCTION_POST_TYPES,
+          incident: 'INCIDENT',
+          cats: OBSTRUCTION_CATEGORIES,
+        },
+      )
+      .limit(300)
       .getMany();
 
-    const reportBlockades: Blockade[] = reports.map((r) => ({
-      id: r.id,
-      title: r.title,
-      category: r.category ?? r.alertType ?? 'bloqueo',
-      lat: Number(r.latitude),
-      lng: Number(r.longitude),
-      radiusMeters: 0,
-    }));
-
-    const postBlockades: Blockade[] = posts.map((p) => ({
+    return posts.map((p) => ({
       id: p.id,
       title: p.title,
-      category: String(p.type).toLowerCase(),
+      category: this.detailCategory(p) ?? String(p.type).toLowerCase(),
       lat: Number(p.latitude),
       lng: Number(p.longitude),
+      // Las incidencias puntuales no tienen radio; los eventos sí.
       radiusMeters: p.radiusMeters ?? 0,
     }));
+  }
 
-    return [...reportBlockades, ...postBlockades];
+  private detailCategory(p: Post): string | null {
+    const d = p.details;
+    if (!d || typeof d !== 'object') return null;
+    const v = (d as Record<string, unknown>)['category'];
+    return v ? String(v) : null;
   }
 
   /** Llama a Google Directions con rutas alternativas. */

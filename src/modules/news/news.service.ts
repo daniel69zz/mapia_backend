@@ -2,8 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { XMLParser } from 'fast-xml-parser';
+import { PostStatus, PostType, PostVisibility } from '@common/enums/post.enums';
+import { Post } from '@modules/posts/entities/post.entity';
 import { MapNewsCategory, MapNewsItem } from './news.types';
-import { GeneratedNewsPost } from './entities/generated-news-post.entity';
 
 interface RssItem {
   title: string;
@@ -112,8 +113,8 @@ export class NewsService {
   private readonly parser = new XMLParser({ ignoreAttributes: false, trimValues: true });
 
   constructor(
-    @InjectRepository(GeneratedNewsPost)
-    private readonly repo: Repository<GeneratedNewsPost>,
+    @InjectRepository(Post)
+    private readonly repo: Repository<Post>,
   ) {}
 
   /** Descarga y parsea el primer RSS que devuelva ítems. */
@@ -164,33 +165,45 @@ export class NewsService {
     return mapped;
   }
 
+  /** Lee un valor string de details (jsonb). */
+  private detail(p: Post, key: string): string | null {
+    const d = p.details;
+    if (!d || typeof d !== 'object') return null;
+    const v = (d as Record<string, unknown>)[key];
+    return v === null || v === undefined || v === '' ? null : String(v);
+  }
+
   /** Publicaciones de noticias persistidas para Explorar (más recientes primero). */
   async getGeneratedPosts() {
-    const rows = await this.repo.find({ order: { createdAt: 'DESC' }, take: 100 });
+    const rows = await this.repo.find({
+      where: { contentType: 'NEWS', visibility: PostVisibility.PUBLIC },
+      order: { createdAt: 'DESC' },
+      take: 100,
+    });
     return rows.map((r) => ({
       id: r.id,
       title: r.title,
-      content: r.content,
-      source: r.source,
-      originalUrl: r.originalUrl,
-      category: r.category,
-      status: r.status,
-      generatedBy: r.generatedBy,
-      isAiGenerated: r.isAiGenerated,
-      mapItemId: r.mapItemId,
-      locationText: r.locationText,
-      lat: r.lat,
-      lng: r.lng,
-      publishedAt: r.publishedAt ? r.publishedAt.toISOString() : null,
+      content: r.description,
+      source: r.sourceName ?? NewsService.sourceName,
+      originalUrl: r.sourceUrl ?? '',
+      category: this.detail(r, 'category') ?? 'noticia',
+      status: 'published',
+      generatedBy: 'rss_polling',
+      isAiGenerated: r.authorType === 'AI',
+      mapItemId: null,
+      locationText: r.locationName ?? this.detail(r, 'locationText'),
+      lat: r.latitude,
+      lng: r.longitude,
+      publishedAt: r.createdAt.toISOString(),
       createdAt: r.createdAt.toISOString(),
     }));
   }
 
   /** Estado de la ingestión de noticias. */
   async getStatus() {
-    const total = await this.repo.count();
+    const total = await this.repo.count({ where: { contentType: 'NEWS' } });
     const latest = await this.repo.findOne({
-      where: {},
+      where: { contentType: 'NEWS' },
       order: { createdAt: 'DESC' },
     });
     return {
@@ -209,7 +222,7 @@ export class NewsService {
 
     for (const item of rawItems) {
       const exists = await this.repo.findOne({
-        where: { originalUrl: item.url },
+        where: { sourceUrl: item.url, contentType: 'NEWS' },
         select: { id: true },
       });
       if (exists) continue;
@@ -218,23 +231,31 @@ export class NewsService {
       const place = this.locate(text);
       const entity = this.repo.create({
         title: item.title,
-        content: item.description ?? item.title,
-        source: NewsService.sourceName,
-        originalUrl: item.url,
-        category: this.categorize(text),
-        status: 'published',
-        generatedBy: 'rss_polling',
-        isAiGenerated: true,
-        locationText: place?.label ?? null,
-        lat: place?.lat ?? null,
-        lng: place?.lng ?? null,
-        publishedAt: new Date(item.publishedAt),
+        description: item.description ?? item.title,
+        type: PostType.NEWS,
+        contentType: 'NEWS',
+        authorType: 'AI',
+        authorId: null,
+        latitude: place?.lat ?? null,
+        longitude: place?.lng ?? null,
+        locationName: place?.label ?? null,
+        showOnMap: !!place,
+        sourceName: NewsService.sourceName,
+        sourceUrl: item.url,
+        status: PostStatus.PUBLISHED,
+        visibility: PostVisibility.PUBLIC,
+        details: {
+          category: this.categorize(text),
+          locationText: place?.label ?? null,
+          isAiGenerated: true,
+          generatedBy: 'rss_polling',
+        },
       });
       try {
         await this.repo.save(entity);
         inserted += 1;
       } catch (error) {
-        // Carrera de duplicados (índice único): se ignora.
+        // Carrera de duplicados: se ignora.
         this.logger.warn(`No se guardó noticia: ${this.errMsg(error)}`);
       }
     }

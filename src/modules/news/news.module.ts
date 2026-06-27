@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { Post } from '@modules/posts/entities/post.entity';
 import { NewsController } from './news.controller';
 import { NewsService } from './news.service';
-import { GeneratedNewsPost } from './entities/generated-news-post.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([GeneratedNewsPost])],
+  imports: [TypeOrmModule.forFeature([Post])],
   controllers: [NewsController],
   providers: [NewsService],
 })

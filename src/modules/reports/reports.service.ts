@@ -2,15 +2,15 @@ import { BadRequestException, ConflictException, Inject, Injectable } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { PaginatedResult, PaginationQueryDto } from '@common/dtos/pagination.dto';
-import { PostType } from '@common/enums/post.enums';
+import { PostStatus, PostType, PostVisibility } from '@common/enums/post.enums';
 import { ReportReason } from '@common/enums/report-reason.enum';
 import { IStorageService, STORAGE_SERVICE } from '@core/storage/storage.types';
 import { IImageAnalyzer, IMAGE_ANALYZER } from '@core/ai/ai.types';
+import { Post } from '@modules/posts/entities/post.entity';
 import { PostsService } from '@modules/posts/posts.service';
 import { PostMedia } from '@modules/post-media/entities/post-media.entity';
 import { ContentReport } from './entities/content-report.entity';
-import { AlertReport, AlertType, ReportSeverity } from './entities/alert-report.entity';
-import { AlertReportImage } from './entities/alert-report-image.entity';
+import { AlertType, ReportSeverity } from './entities/alert-report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
 import { CreateCitizenReportDto } from './dto/create-citizen-report.dto';
 import { ParseCitizenReportDto } from './dto/parse-citizen-report.dto';
@@ -55,10 +55,8 @@ export class ReportsService {
   constructor(
     @InjectRepository(ContentReport)
     private readonly reportRepo: Repository<ContentReport>,
-    @InjectRepository(AlertReport)
-    private readonly alertReportRepo: Repository<AlertReport>,
-    @InjectRepository(AlertReportImage)
-    private readonly alertImageRepo: Repository<AlertReportImage>,
+    @InjectRepository(Post)
+    private readonly postRepo: Repository<Post>,
     @InjectRepository(PostMedia)
     private readonly postMediaRepo: Repository<PostMedia>,
     @Inject(STORAGE_SERVICE)
@@ -139,53 +137,57 @@ export class ReportsService {
       }
     }
 
-    const report = this.alertReportRepo.create({
+    // Tabla unificada: una incidencia es un `post` con content_type=INCIDENT.
+    const post = this.postRepo.create({
+      authorId: userId ?? null,
       title: dto.title,
-      description: dto.description ?? null,
-      product: dto.product ?? null,
-      alertType: dto.alertType,
+      description: dto.description ?? dto.sourceText ?? dto.title,
+      type: mapToPostType(dto.category ?? null, dto.alertType),
+      contentType: 'INCIDENT',
+      authorType: userId ? 'USER' : 'AI',
       severity: dto.severity,
       latitude: dto.latitude,
       longitude: dto.longitude,
-      department: dto.department ?? null,
-      municipality: dto.municipality ?? null,
-      zone: dto.zone ?? null,
-      price: dto.price === undefined ? null : String(dto.price),
-      sourceText: dto.sourceText ?? null,
-      confidence: dto.confidence === undefined ? '0.75' : String(dto.confidence),
-      status: 'active',
-      userId: userId ?? null,
-      category: (dto.category as AlertReport['category']) ?? null,
-      details: parseDetails(dto.details),
+      address: buildAddress(dto.zone, dto.municipality, dto.department),
+      locationName: dto.zone ?? null,
+      showOnMap: true,
+      status: PostStatus.PUBLISHED,
+      visibility: PostVisibility.PUBLIC,
+      details: {
+        alertType: dto.alertType,
+        category: dto.category ?? null,
+        department: dto.department ?? null,
+        municipality: dto.municipality ?? null,
+        zone: dto.zone ?? null,
+        product: dto.product ?? null,
+        price: dto.price ?? null,
+        confidence: dto.confidence ?? 0.75,
+        ...(parseDetails(dto.details) ?? {}),
+      },
     });
 
-    const saved = await this.alertReportRepo.save(report);
+    const saved = await this.postRepo.save(post);
 
-    const savedImages: AlertReportImage[] = [];
     for (const image of images) {
       const stored = await this.storage.upload({
         buffer: image.buffer,
         originalName: image.originalname,
         mimeType: image.mimetype,
-        folder: `reports/${saved.id}`,
+        folder: `posts/${saved.id}`,
       });
-      const savedImage = await this.alertImageRepo.save(
-        this.alertImageRepo.create({
-          reportId: saved.id,
+      await this.postMediaRepo.save(
+        this.postMediaRepo.create({
+          postId: saved.id,
           url: stored.url,
-          path: stored.storageKey,
+          storageKey: stored.storageKey,
+          type: 'IMAGE',
         }),
       );
-      savedImages.push(savedImage);
     }
-
-    const postId = userId
-      ? await this.createPublicationFromReport(userId, saved, savedImages)
-      : undefined;
 
     return {
       id: saved.id,
-      ...(postId ? { postId } : {}),
+      postId: saved.id,
       status: 'created',
       message: 'Reporte publicado correctamente',
     };
@@ -216,14 +218,16 @@ export class ReportsService {
    * Usa PostGIS: ST_DWithin sobre geography(Point,4326) + ST_Distance para ordenar.
    */
   async findNearby(lat: number, lng: number, radius = 1500, category?: string) {
-    const rows = await this.alertReportRepo.query(
-      `SELECT id, category, title, description, tags, latitude, longitude,
-              confidence, status, created_at AS "createdAt",
+    const rows = await this.postRepo.query(
+      `SELECT id, title, description, latitude, longitude,
+              (details->>'category') AS category,
+              severity, created_at AS "createdAt",
               ST_Distance(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography) AS "distanceMeters"
-         FROM reports
-        WHERE status = 'published'
+         FROM posts
+        WHERE content_type = 'INCIDENT'
+          AND visibility = 'PUBLIC'
           AND location IS NOT NULL
-          AND ($4::text IS NULL OR category = $4)
+          AND ($4::text IS NULL OR (details->>'category') = $4)
           AND ST_DWithin(location, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
         ORDER BY "distanceMeters" ASC
         LIMIT 100`,
@@ -255,41 +259,6 @@ export class ReportsService {
     }
   }
 
-  private async createPublicationFromReport(
-    userId: string,
-    report: AlertReport,
-    images: AlertReportImage[],
-  ): Promise<string> {
-    const post = await this.postsService.create(userId, {
-      title: report.title,
-      description: report.description ?? report.sourceText ?? report.title,
-      type: mapReportToPostType(report),
-      latitude: Number(report.latitude),
-      longitude: Number(report.longitude),
-      address: buildReportAddress(report),
-    });
-
-    for (const image of images) {
-      await this.postMediaRepo.save(
-        this.postMediaRepo.create({
-          postId: post.id,
-          url: image.url,
-          storageKey: image.path ?? image.url,
-          type: 'IMAGE',
-        }),
-      );
-    }
-
-    report.details = {
-      ...(report.details ?? {}),
-      linkedPostId: post.id,
-      contentType: 'USER_EVENT',
-      authorType: 'USER',
-    };
-    await this.alertReportRepo.save(report);
-
-    return post.id;
-  }
 }
 
 function normalizeReportReason(reason: string): ReportReason {
@@ -477,9 +446,8 @@ function confidenceScore(text: string, product: string | null, zone: string): nu
   return Math.min(0.94, Number(score.toFixed(2)));
 }
 
-function mapReportToPostType(report: AlertReport): PostType {
-  const category = normalize(String(report.category ?? ''));
-  const alertType = report.alertType;
+function mapToPostType(rawCategory: string | null, alertType: AlertType | null): PostType {
+  const category = normalize(String(rawCategory ?? ''));
 
   if (
     [
@@ -519,9 +487,13 @@ function mapReportToPostType(report: AlertReport): PostType {
   return PostType.OTHER;
 }
 
-function buildReportAddress(report: AlertReport): string | undefined {
-  const parts = [report.zone, report.municipality, report.department]
+function buildAddress(
+  zone?: string | null,
+  municipality?: string | null,
+  department?: string | null,
+): string | null {
+  const parts = [zone, municipality, department]
     .map((part) => part?.trim())
     .filter((part): part is string => Boolean(part));
-  return parts.length ? parts.join(', ') : undefined;
+  return parts.length ? parts.join(', ') : null;
 }

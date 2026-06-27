@@ -29,7 +29,7 @@ export function toPostResponse(
     reportsCount: post.reportsCount,
     author: profile
       ? {
-          id: post.authorId,
+          id: post.authorId ?? '',
           name: profile.name,
           username: profile.username,
           avatarUrl: profile.avatarUrl,

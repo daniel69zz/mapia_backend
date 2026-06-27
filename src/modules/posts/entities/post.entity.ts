@@ -5,6 +5,13 @@ import { PostStatus, PostType, PostVisibility } from '@common/enums/post.enums';
 import { User } from '@modules/users/entities/user.entity';
 import { PostMedia } from '@modules/post-media/entities/post-media.entity';
 
+/** Naturaleza del contenido unificado (tabla única `posts`). */
+export type ContentType = 'EVENT' | 'INCIDENT' | 'NEWS' | 'OTHER';
+/** Quién generó el contenido. */
+export type AuthorType = 'USER' | 'AI';
+/** Severidad (para incidencias/alertas). */
+export type ContentSeverity = 'normal' | 'low' | 'medium' | 'high';
+
 /**
  * Publicación geolocalizada (núcleo de Mapia).
  *
@@ -18,10 +25,10 @@ import { PostMedia } from '@modules/post-media/entities/post-media.entity';
 @Index('idx_posts_status', ['status'])
 @Index('idx_posts_visibility', ['visibility'])
 export class Post extends BaseEntity {
-  @ApiProperty({ format: 'uuid' })
+  @ApiPropertyOptional({ format: 'uuid' })
   @Index('idx_posts_author')
-  @Column({ name: 'author_id', type: 'uuid' })
-  authorId: string;
+  @Column({ name: 'author_id', type: 'uuid', nullable: true })
+  authorId: string | null;
 
   @ManyToOne(() => User, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'author_id' })
@@ -39,17 +46,43 @@ export class Post extends BaseEntity {
   @Column({ type: 'enum', enum: PostType })
   type: PostType;
 
+  @ApiProperty({ description: 'Naturaleza del contenido', example: 'EVENT' })
+  @Index('idx_posts_content_type')
+  @Column({ name: 'content_type', type: 'text', default: 'EVENT' })
+  contentType: ContentType;
+
+  @ApiProperty({ description: 'Autor: USER o AI', example: 'USER' })
+  @Index('idx_posts_author_type')
+  @Column({ name: 'author_type', type: 'text', default: 'USER' })
+  authorType: AuthorType;
+
+  @ApiPropertyOptional({ description: 'Severidad (incidencias)', example: 'high' })
+  @Column({ type: 'text', nullable: true })
+  severity: ContentSeverity | null;
+
+  @ApiPropertyOptional({ description: 'Fuente externa (noticias)', example: 'El Deber' })
+  @Column({ name: 'source_name', type: 'varchar', length: 120, nullable: true })
+  sourceName: string | null;
+
+  @ApiPropertyOptional({ description: 'URL de la fuente (noticias)' })
+  @Column({ name: 'source_url', type: 'text', nullable: true })
+  sourceUrl: string | null;
+
+  @ApiPropertyOptional({ description: 'Datos específicos por categoría (jsonb)' })
+  @Column({ type: 'jsonb', nullable: true })
+  details: Record<string, unknown> | null;
+
   @ApiProperty({ enum: PostStatus })
   @Column({ type: 'enum', enum: PostStatus, default: PostStatus.PUBLISHED })
   status: PostStatus;
 
-  @ApiProperty({ example: -16.5 })
-  @Column({ type: 'double precision' })
-  latitude: number;
+  @ApiPropertyOptional({ example: -16.5 })
+  @Column({ type: 'double precision', nullable: true })
+  latitude: number | null;
 
-  @ApiProperty({ example: -68.15 })
-  @Column({ type: 'double precision' })
-  longitude: number;
+  @ApiPropertyOptional({ example: -68.15 })
+  @Column({ type: 'double precision', nullable: true })
+  longitude: number | null;
 
   @ApiPropertyOptional({ example: 'Sopocachi, La Paz' })
   @Column({ type: 'varchar', length: 300, nullable: true })

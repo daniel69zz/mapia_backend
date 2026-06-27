@@ -6,7 +6,6 @@ import { GeoConfig } from '@core/config/configuration';
 import { PostVisibility } from '@common/enums/post.enums';
 import { clampRadiusToMeters, parseBbox } from '@common/utils/geo.utils';
 import { Post } from '@modules/posts/entities/post.entity';
-import { AlertReport } from '@modules/reports/entities/alert-report.entity';
 import { MapAlertsQueryDto } from './dto/map-alerts-query.dto';
 import { MapBboxQueryDto, MapMarkerDto, MapNearbyQueryDto } from './dto/map-query.dto';
 import { MapPublicationsQueryDto } from './dto/map-publications-query.dto';
@@ -33,8 +32,6 @@ export class MapService {
   constructor(
     @InjectRepository(Post)
     private readonly postRepo: Repository<Post>,
-    @InjectRepository(AlertReport)
-    private readonly alertRepo: Repository<AlertReport>,
     private readonly configService: ConfigService,
   ) {
     this.geo = this.configService.get<GeoConfig>('geo')!;
@@ -115,6 +112,9 @@ export class MapService {
       .addSelect('profile.likes_count', 'userReputation')
       .where('post.visibility = :vis', { vis: PostVisibility.PUBLIC })
       .andWhere('post.show_on_map = true')
+      // Solo eventos/publicaciones de usuario: las incidencias van por /map/alerts
+      // y las noticias por la capa de noticias (evita duplicados en el mapa).
+      .andWhere('post.content_type = :ct', { ct: 'EVENT' })
       .orderBy('post.created_at', 'DESC')
       .limit(MAX_MARKERS);
 
@@ -179,83 +179,45 @@ export class MapService {
   }
 
   async alerts(query: MapAlertsQueryDto) {
-    const qb = this.filteredAlertsQuery(query)
-      .leftJoinAndSelect('report.images', 'image')
-      .orderBy('report.createdAt', 'DESC')
-      .limit(MAX_MARKERS);
-
-    const reports = await qb.getMany();
-
-    return {
-      items: reports.map((report) => ({
-        id: report.id,
-        title: report.title,
-        description: report.description,
-        product: report.product,
-        alertType: report.alertType,
-        severity: report.severity,
-        latitude: Number(report.latitude),
-        longitude: Number(report.longitude),
-        department: report.department,
-        municipality: report.municipality,
-        zone: report.zone,
-        reportsCount: 1,
-        confidence: report.confidence === null ? 0.75 : Number(report.confidence),
-        avgPrice: report.price === null ? null : Number(report.price),
-        lastReportedAt: report.createdAt.toISOString(),
-        images: (report.images ?? []).map((image) => image.url),
-      })),
-    };
+    const incidents = await this.loadIncidents(query);
+    return { items: incidents.map((p) => this.toIncidentItem(p)) };
   }
 
   async summary(query: MapAlertsQueryDto) {
-    const [totalAlerts, highRiskAlerts, productRows, departmentRows, latest] = await Promise.all([
-      this.filteredAlertsQuery(query).getCount(),
-      this.filteredAlertsQuery({ ...query, severity: 'high' }).getCount(),
-      this.filteredAlertsQuery(query)
-        .select('report.product', 'value')
-        .addSelect('COUNT(*)', 'count')
-        .andWhere('report.product IS NOT NULL')
-        .groupBy('report.product')
-        .orderBy('count', 'DESC')
-        .limit(1)
-        .getRawMany<{ value: string; count: string }>(),
-      this.filteredAlertsQuery(query)
-        .select('report.department', 'value')
-        .addSelect('COUNT(*)', 'count')
-        .andWhere('report.department IS NOT NULL')
-        .groupBy('report.department')
-        .orderBy('count', 'DESC')
-        .limit(1)
-        .getRawMany<{ value: string; count: string }>(),
-      this.filteredAlertsQuery(query).orderBy('report.createdAt', 'DESC').getOne(),
-    ]);
-
+    const incidents = await this.loadIncidents(query);
+    const productCount = new Map<string, number>();
+    const deptCount = new Map<string, number>();
+    let highRisk = 0;
+    let latest: Date | null = null;
+    for (const p of incidents) {
+      if (p.severity === 'high') highRisk += 1;
+      const product = this.detail(p, 'product');
+      if (product) productCount.set(product, (productCount.get(product) ?? 0) + 1);
+      const dept = this.detail(p, 'department');
+      if (dept) deptCount.set(dept, (deptCount.get(dept) ?? 0) + 1);
+      if (!latest || p.createdAt > latest) latest = p.createdAt;
+    }
     return {
-      totalAlerts,
-      highRiskAlerts,
-      mostAffectedProduct: productRows[0]?.value ?? null,
-      mostAffectedDepartment: departmentRows[0]?.value ?? null,
-      updatedAt: latest?.createdAt.toISOString() ?? new Date().toISOString(),
+      totalAlerts: incidents.length,
+      highRiskAlerts: highRisk,
+      mostAffectedProduct: topKey(productCount),
+      mostAffectedDepartment: topKey(deptCount),
+      updatedAt: (latest ?? new Date()).toISOString(),
     };
   }
 
   async filters() {
-    const [departments, municipalities, zones, products, alertTypes, severities] =
-      await Promise.all([
-        this.distinctReportValues('department'),
-        this.distinctReportValues('municipality'),
-        this.distinctReportValues('zone'),
-        this.distinctReportValues('product'),
-        this.distinctReportValues('alertType'),
-        this.distinctReportValues('severity'),
-      ]);
+    const incidents = await this.allIncidents();
+    const distinct = (fn: (p: Post) => string | null): string[] =>
+      [...new Set(incidents.map(fn).filter((v): v is string => !!v))].sort();
 
+    const alertTypes = distinct((p) => this.detail(p, 'alertType'));
+    const severities = distinct((p) => p.severity ?? null);
     return {
-      departments,
-      municipalities,
-      zones,
-      products,
+      departments: distinct((p) => this.detail(p, 'department')),
+      municipalities: distinct((p) => this.detail(p, 'municipality')),
+      zones: distinct((p) => this.detail(p, 'zone') ?? p.locationName),
+      products: distinct((p) => this.detail(p, 'product')),
       alertTypes: alertTypes.length
         ? alertTypes
         : [
@@ -268,6 +230,84 @@ export class MapService {
             'otro',
           ],
       severities: severities.length ? severities : ['normal', 'low', 'medium', 'high'],
+    };
+  }
+
+  /** Lee un valor de `details` (jsonb) como string. */
+  private detail(p: Post, key: string): string | null {
+    const d = p.details;
+    if (!d || typeof d !== 'object') return null;
+    const v = (d as Record<string, unknown>)[key];
+    return v === null || v === undefined || v === '' ? null : String(v);
+  }
+
+  /** Todas las incidencias publicadas (posts content_type=INCIDENT) con media. */
+  private async allIncidents(): Promise<Post[]> {
+    return this.postRepo.find({
+      where: { contentType: 'INCIDENT', visibility: PostVisibility.PUBLIC },
+      relations: { media: true },
+      order: { createdAt: 'DESC' },
+      take: MAX_MARKERS * 2,
+    });
+  }
+
+  /** Incidencias filtradas en memoria según el query del mapa/alertas. */
+  private async loadIncidents(query: MapAlertsQueryDto): Promise<Post[]> {
+    const all = await this.allIncidents();
+    const result = all.filter((p) => this.matchesAlertQuery(p, query));
+    return result.slice(0, MAX_MARKERS);
+  }
+
+  private matchesAlertQuery(p: Post, q: MapAlertsQueryDto): boolean {
+    const eqCi = (a: string | null, b?: string) =>
+      !b || (a !== null && a.toLowerCase() === b.toLowerCase());
+    const incCi = (a: string | null, b?: string) =>
+      !b || (a !== null && a.toLowerCase().includes(b.toLowerCase()));
+
+    if (!eqCi(this.detail(p, 'department'), q.department)) return false;
+    if (!eqCi(this.detail(p, 'municipality'), q.municipality)) return false;
+    if (!incCi(this.detail(p, 'zone') ?? p.locationName, q.zone)) return false;
+    if (!incCi(this.detail(p, 'product'), q.product)) return false;
+    if (q.alertType && this.detail(p, 'alertType') !== q.alertType) return false;
+    if (q.severity && p.severity !== q.severity) return false;
+    if (q.from && p.createdAt < new Date(q.from)) return false;
+    if (q.to && p.createdAt > new Date(q.to)) return false;
+    if (
+      q.lat !== undefined &&
+      q.lng !== undefined &&
+      p.latitude !== null &&
+      p.longitude !== null
+    ) {
+      const radiusKm = clampRadiusToMeters(
+        q.radiusKm,
+        this.geo.defaultRadiusKm,
+        this.geo.maxRadiusKm,
+      ) / 1000;
+      if (haversineKm(q.lat, q.lng, p.latitude, p.longitude) > radiusKm) return false;
+    }
+    return true;
+  }
+
+  private toIncidentItem(p: Post) {
+    return {
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      product: this.detail(p, 'product'),
+      alertType: this.detail(p, 'alertType'),
+      severity: p.severity,
+      latitude: Number(p.latitude),
+      longitude: Number(p.longitude),
+      department: this.detail(p, 'department'),
+      municipality: this.detail(p, 'municipality'),
+      zone: this.detail(p, 'zone') ?? p.locationName,
+      reportsCount: 1,
+      confidence: this.detail(p, 'confidence')
+        ? Number(this.detail(p, 'confidence'))
+        : 0.75,
+      avgPrice: this.detail(p, 'price') ? Number(this.detail(p, 'price')) : null,
+      lastReportedAt: p.createdAt.toISOString(),
+      images: (p.media ?? []).map((m) => m.url),
     };
   }
 
@@ -286,74 +326,8 @@ export class MapService {
       .addSelect('profile.name', 'authorName')
       .addSelect('profile.avatar_url', 'authorAvatarUrl')
       .where('post.visibility = :vis', { vis: PostVisibility.PUBLIC })
-      .andWhere('post.show_on_map = true');
-  }
-
-  private filteredAlertsQuery(query: MapAlertsQueryDto) {
-    const qb = this.alertRepo
-      .createQueryBuilder('report')
-      .where('report.status = :status', { status: 'active' });
-
-    if (query.department) {
-      qb.andWhere('LOWER(report.department) = LOWER(:department)', {
-        department: query.department,
-      });
-    }
-    if (query.municipality) {
-      qb.andWhere('LOWER(report.municipality) = LOWER(:municipality)', {
-        municipality: query.municipality,
-      });
-    }
-    if (query.zone) {
-      qb.andWhere('LOWER(report.zone) LIKE LOWER(:zone)', { zone: `%${query.zone}%` });
-    }
-    if (query.product) {
-      qb.andWhere('LOWER(report.product) LIKE LOWER(:product)', {
-        product: `%${query.product}%`,
-      });
-    }
-    if (query.alertType) {
-      qb.andWhere('report.alertType = :alertType', { alertType: query.alertType });
-    }
-    if (query.severity) {
-      qb.andWhere('report.severity = :severity', { severity: query.severity });
-    }
-    if (query.from) {
-      qb.andWhere('report.createdAt >= :from', { from: query.from });
-    }
-    if (query.to) {
-      qb.andWhere('report.createdAt <= :to', { to: query.to });
-    }
-    if (query.lat !== undefined && query.lng !== undefined) {
-      const meters = clampRadiusToMeters(
-        query.radiusKm,
-        this.geo.defaultRadiusKm,
-        this.geo.maxRadiusKm,
-      );
-      qb.andWhere(
-        `ST_DWithin(
-          ST_SetSRID(ST_MakePoint(report.longitude, report.latitude), 4326)::geography,
-          ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography,
-          :meters
-        )`,
-        { lng: query.lng, lat: query.lat, meters },
-      );
-    }
-
-    return qb;
-  }
-
-  private async distinctReportValues(field: keyof AlertReport): Promise<string[]> {
-    const rows = await this.alertRepo
-      .createQueryBuilder('report')
-      .select(`report.${String(field)}`, 'value')
-      .where(`report.${String(field)} IS NOT NULL`)
-      .andWhere('report.status = :status', { status: 'active' })
-      .groupBy(`report.${String(field)}`)
-      .orderBy(`report.${String(field)}`, 'ASC')
-      .getRawMany<{ value: string }>();
-
-    return rows.map((row) => row.value).filter(Boolean);
+      .andWhere('post.show_on_map = true')
+      .andWhere('post.content_type = :ct', { ct: 'EVENT' });
   }
 
   private mapRows(rows: MarkerRow[]): MapMarkerDto[] {
@@ -372,4 +346,30 @@ export class MapService {
       },
     }));
   }
+}
+
+/** Clave con mayor conteo de un Map (o null si vacío). */
+function topKey(counts: Map<string, number>): string | null {
+  let best: string | null = null;
+  let max = -1;
+  for (const [key, count] of counts) {
+    if (count > max) {
+      max = count;
+      best = key;
+    }
+  }
+  return best;
+}
+
+/** Distancia en km entre dos puntos (haversine). */
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
 }
