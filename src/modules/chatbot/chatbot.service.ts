@@ -89,8 +89,22 @@ export class ChatbotService {
 
   async ask(dto: AskDto): Promise<ChatbotAnswer> {
     const query = this.buildQuery(dto);
-    const { items } = await this.mapService.alerts(query);
-    const incidents = (items as IncidentItem[]).slice(0, MAX_INCIDENTS);
+
+    // Para la zona NO usamos el filtro SQL exacto: traemos el conjunto amplio
+    // (por tipo/severidad/ciudad) y filtramos por nombre de zona contra varios
+    // campos (zona, municipio, depto, título, descripción) de forma flexible.
+    const zoneTerm = query.zone;
+    const fetchQuery: MapAlertsQueryDto = zoneTerm
+      ? { ...query, zone: undefined }
+      : query;
+
+    const { items } = await this.mapService.alerts(fetchQuery);
+    let incidents = items as IncidentItem[];
+    if (zoneTerm) {
+      const z = this.normalize(zoneTerm);
+      incidents = incidents.filter((it) => this.matchesZone(it, z));
+    }
+    incidents = incidents.slice(0, MAX_INCIDENTS);
 
     const deterministic = this.composeDeterministic(incidents, query);
 
@@ -179,6 +193,12 @@ export class ChatbotService {
       }
     }
 
+    // Zona libre (barrio/mercado/calle/zona) si no se detectó ciudad conocida.
+    if (!query.municipality && !query.department) {
+      const zone = this.extractZone(dto.message);
+      if (zone) query.zone = zone;
+    }
+
     const wantsNear = ['cerca', 'cercan', 'aqui', 'aquí', 'por aca', 'por acá', 'mi ubicacion', 'mi ubicación'].some(
       (k) => text.includes(k),
     );
@@ -189,6 +209,42 @@ export class ChatbotService {
     }
 
     return query;
+  }
+
+  /**
+   * ¿La incidencia pertenece a la zona pedida? Compara el término (normalizado)
+   * contra zona, municipio, departamento, título y descripción. Acepta coincidencia
+   * de la frase completa o de todas sus palabras significativas.
+   */
+  private matchesZone(it: IncidentItem, z: string): boolean {
+    const hay = this.normalize(
+      [it.zone, it.municipality, it.department, it.title, it['description']]
+        .filter(Boolean)
+        .join(' '),
+    );
+    if (hay.includes(z)) return true;
+    const tokens = z.split(/\s+/).filter((t) => t.length >= 4);
+    return tokens.length > 0 && tokens.every((t) => hay.includes(t));
+  }
+
+  /** Extrae una zona/barrio/calle libre del mensaje (ej. "bloqueos en Sopocachi"). */
+  private extractZone(message: string): string | null {
+    const re =
+      /\b(?:en|zona(?: de)?|barrio(?: de)?|mercado(?: de)?|av(?:enida)?\.?|calle)\s+([\p{L}0-9][\p{L}0-9 .'-]{2,38})/iu;
+    const match = message.match(re);
+    if (!match) return null;
+    let zone = match[1].trim();
+    // Corta en conectores que no son parte del lugar.
+    zone = zone
+      .replace(
+        /\s+\b(que|y|con|para|hay|tiene|tienen|esta|están|estan|porfa|por favor|cerca|hoy|ahora)\b.*$/iu,
+        '',
+      )
+      .trim();
+    const words = zone.split(/\s+/).slice(0, 3).join(' ');
+    const stop = ['la zona', 'el mapa', 'mi ubicacion', 'mi ubicación', 'esta zona', 'la calle'];
+    if (words.length < 3 || stop.includes(words.toLowerCase())) return null;
+    return words;
   }
 
   /** Respuesta garantizada (sin IA) a partir de las incidencias recuperadas. */
@@ -291,7 +347,8 @@ export class ChatbotService {
     const parts: string[] = [];
     if (query.alertType) parts.push(`de tipo "${ALERT_TYPE_LABELS[query.alertType]}"`);
     if (query.severity === 'high') parts.push('de alerta alta');
-    if (query.municipality) parts.push(`en ${query.municipality}`);
+    if (query.zone) parts.push(`en ${query.zone}`);
+    else if (query.municipality) parts.push(`en ${query.municipality}`);
     else if (query.department) parts.push(`en ${query.department}`);
     if (query.lat !== undefined) parts.push('cerca de ti');
     return parts.length ? ` ${parts.join(' ')}` : '';

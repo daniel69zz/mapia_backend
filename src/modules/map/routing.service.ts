@@ -8,7 +8,9 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MapsConfig } from '@core/config/configuration';
+import { PostType, PostVisibility } from '@common/enums/post.enums';
 import { AlertReport } from '@modules/reports/entities/alert-report.entity';
+import { Post } from '@modules/posts/entities/post.entity';
 import { RouteQueryDto } from './dto/route-query.dto';
 
 interface LatLng {
@@ -20,6 +22,8 @@ interface Blockade extends LatLng {
   id: string;
   title: string;
   category: string;
+  /** Radio del evento/obstrucción en metros (0 = puntual). */
+  radiusMeters: number;
 }
 
 export interface RouteResult {
@@ -37,7 +41,9 @@ export interface RouteResult {
 
 /** Categorías/alertas que obstruyen el paso y deben evitarse. */
 const OBSTRUCTION_CATEGORIES = ['bloqueo', 'marcha', 'accidente', 'incendio', 'emergencia'];
-/** Distancia (m) a la que se considera que una ruta "toca" un bloqueo. */
+/** Tipos de publicación/evento que obstruyen el paso. */
+const OBSTRUCTION_POST_TYPES = [PostType.BLOCKADE, PostType.ACCIDENT];
+/** Margen base (m) sobre el punto/radio para considerar que la ruta lo "toca". */
 const BLOCK_THRESHOLD_M = 70;
 /** Margen (grados ~) alrededor del corredor para buscar bloqueos. */
 const BBOX_MARGIN = 0.06;
@@ -50,6 +56,8 @@ export class RoutingService {
   constructor(
     @InjectRepository(AlertReport)
     private readonly alertRepo: Repository<AlertReport>,
+    @InjectRepository(Post)
+    private readonly postRepo: Repository<Post>,
     configService: ConfigService,
   ) {
     this.maps = configService.get<MapsConfig>('maps')!;
@@ -69,10 +77,12 @@ export class RoutingService {
       throw new BadGatewayException('No se encontró ninguna ruta');
     }
 
-    // Evalúa cada alternativa: cuántos bloqueos toca + duración.
+    // Evalúa cada alternativa: cuántos bloqueos toca (considerando su RADIO) + duración.
+    // Una ruta "toca" un evento si entra en su círculo (radio) + un margen de seguridad.
     const scored = routes.map((r) => {
       const blocked = blockades.filter(
-        (b) => distancePointToPath(b, r.points) <= BLOCK_THRESHOLD_M,
+        (b) =>
+          distancePointToPath(b, r.points) <= b.radiusMeters + BLOCK_THRESHOLD_M,
       ).length;
       return { ...r, blocked };
     });
@@ -101,7 +111,8 @@ export class RoutingService {
     const minLng = Math.min(dto.originLng, dto.destLng) - BBOX_MARGIN;
     const maxLng = Math.max(dto.originLng, dto.destLng) + BBOX_MARGIN;
 
-    const rows = await this.alertRepo
+    // (a) Incidencias ciudadanas (tabla reports) — puntuales (radio 0).
+    const reports = await this.alertRepo
       .createQueryBuilder('report')
       .where('report.status = :status', { status: 'active' })
       .andWhere('report.latitude BETWEEN :minLat AND :maxLat', { minLat, maxLat })
@@ -113,13 +124,35 @@ export class RoutingService {
       .limit(200)
       .getMany();
 
-    return rows.map((r) => ({
+    // (b) Eventos/publicaciones que obstruyen (tabla posts) — con su RADIO.
+    const posts = await this.postRepo
+      .createQueryBuilder('post')
+      .where('post.visibility = :vis', { vis: PostVisibility.PUBLIC })
+      .andWhere('post.type IN (:...types)', { types: OBSTRUCTION_POST_TYPES })
+      .andWhere('post.latitude BETWEEN :minLat AND :maxLat', { minLat, maxLat })
+      .andWhere('post.longitude BETWEEN :minLng AND :maxLng', { minLng, maxLng })
+      .limit(200)
+      .getMany();
+
+    const reportBlockades: Blockade[] = reports.map((r) => ({
       id: r.id,
       title: r.title,
       category: r.category ?? r.alertType ?? 'bloqueo',
       lat: Number(r.latitude),
       lng: Number(r.longitude),
+      radiusMeters: 0,
     }));
+
+    const postBlockades: Blockade[] = posts.map((p) => ({
+      id: p.id,
+      title: p.title,
+      category: String(p.type).toLowerCase(),
+      lat: Number(p.latitude),
+      lng: Number(p.longitude),
+      radiusMeters: p.radiusMeters ?? 0,
+    }));
+
+    return [...reportBlockades, ...postBlockades];
   }
 
   /** Llama a Google Directions con rutas alternativas. */

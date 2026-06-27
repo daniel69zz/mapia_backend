@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
-import { AiConfig } from '@core/config/configuration';
+import { AiConfig, MapsConfig } from '@core/config/configuration';
 import { AnalyzeReportDto } from '../dto/analyze-report.dto';
 import { AnalyzedField, AnalyzedReport } from './analyzed-report.types';
 import {
@@ -41,14 +41,20 @@ interface AiResult {
   suggestions?: Record<string, unknown>;
 }
 
+interface GeocodeResponse {
+  results?: { address_components?: { long_name: string; types: string[] }[] }[];
+}
+
 @Injectable()
 export class ReportAnalysisService {
   private readonly logger = new Logger(ReportAnalysisService.name);
   private readonly ai: AiConfig;
+  private readonly maps: MapsConfig;
   private genai: GoogleGenAI | null = null;
 
   constructor(configService: ConfigService) {
     this.ai = configService.get<AiConfig>('ai')!;
+    this.maps = configService.get<MapsConfig>('maps')!;
   }
 
   async analyze(
@@ -57,10 +63,18 @@ export class ReportAnalysisService {
   ): Promise<AnalyzedReport> {
     const text = dto.text.trim();
     const heuristicValues = this.extractHeuristics(text);
-    const zone =
-      dto.latitude !== undefined && dto.longitude !== undefined
-        ? departmentFromCoords(dto.latitude, dto.longitude)
-        : null;
+    const hasCoords =
+      dto.latitude !== undefined && dto.longitude !== undefined;
+
+    // Ubicación a partir de las coordenadas del usuario (Google reverse geocode).
+    const geo = hasCoords
+      ? await this.reverseGeo(dto.latitude!, dto.longitude!)
+      : null;
+    const coordsDept = hasCoords
+      ? departmentFromCoords(dto.latitude!, dto.longitude!)
+      : null;
+    const zone = geo?.zone ?? coordsDept;
+    const nowTime = this.currentTime();
 
     let ai: AiResult | null = null;
     if (this.ai.enabled) {
@@ -85,9 +99,27 @@ export class ReportAnalysisService {
     const fields: AnalyzedField[] = specs.map((spec) => {
       const raw = aiValues[spec.key] ?? heuristicValues[spec.key] ?? null;
       let value = raw === null || raw === undefined ? null : String(raw).trim();
-      // 'department' se completa con el detectado por coordenadas si la IA no lo dio.
-      if ((!value || value.length === 0) && spec.key === 'department') {
-        value = zone;
+
+      // Pre-rellenos inteligentes por campo:
+      if (!value || value.length === 0) {
+        switch (spec.key) {
+          case 'department':
+            // IA -> reverse geocode -> heurística por coordenadas.
+            value = (aiValues.department as string) ?? geo?.department ?? coordsDept;
+            break;
+          case 'municipality':
+            value = (aiValues.municipality as string) ?? geo?.municipality ?? null;
+            break;
+          case 'zone':
+            value = (aiValues.zone as string) ?? geo?.zone ?? null;
+            break;
+          case 'approxTime':
+            // Sugiere la hora actual del reporte.
+            value = nowTime;
+            break;
+          default:
+            break;
+        }
       }
       const hasValue = !!value && value.length > 0;
 
@@ -206,6 +238,45 @@ export class ReportAnalysisService {
     } catch {
       return {};
     }
+  }
+
+  /** Reverse geocode (Google) -> departamento / municipio / zona. */
+  private async reverseGeo(
+    lat: number,
+    lng: number,
+  ): Promise<{ department: string | null; municipality: string | null; zone: string | null } | null> {
+    if (!this.maps.geocodingEnabled || !this.maps.apiKey) return null;
+    try {
+      const url = new URL('https://maps.googleapis.com/maps/api/geocode/json');
+      url.searchParams.set('latlng', `${lat},${lng}`);
+      url.searchParams.set('key', this.maps.apiKey);
+      url.searchParams.set('language', 'es');
+      const res = await fetch(url.toString());
+      const data = (await res.json()) as GeocodeResponse;
+      const comps = data.results?.[0]?.address_components ?? [];
+      const pick = (type: string): string | null =>
+        comps.find((c) => c.types.includes(type))?.long_name ?? null;
+      return {
+        department: pick('administrative_area_level_1'),
+        municipality: pick('locality') ?? pick('administrative_area_level_2'),
+        zone:
+          pick('sublocality_level_1') ??
+          pick('sublocality') ??
+          pick('neighborhood') ??
+          pick('route'),
+      };
+    } catch (error) {
+      this.logger.warn(`reverseGeo falló: ${this.errMsg(error)}`);
+      return null;
+    }
+  }
+
+  /** Hora local de Bolivia (UTC-4) en formato HH:mm. */
+  private currentTime(): string {
+    const bolivia = new Date(Date.now() - 4 * 60 * 60 * 1000);
+    const hh = bolivia.getUTCHours().toString().padStart(2, '0');
+    const mm = bolivia.getUTCMinutes().toString().padStart(2, '0');
+    return `${hh}:${mm}`;
   }
 
   private getClient(): GoogleGenAI {
