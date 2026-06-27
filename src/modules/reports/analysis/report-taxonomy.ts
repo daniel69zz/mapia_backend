@@ -51,7 +51,8 @@ export const DEPARTMENTS = [
 /** Campos de ubicación comunes a todas las categorías (combos con sugerencias IA). */
 export const LOCATION_FIELDS: FieldSpec[] = [
   { key: 'department', label: 'Departamento', type: 'select', options: DEPARTMENTS },
-  { key: 'zone', label: 'Zona', type: 'text', hint: 'Barrio, mercado o zona detectada' },
+  { key: 'municipality', label: 'Municipio', type: 'text', hint: 'Detectado por tu ubicación' },
+  { key: 'zone', label: 'Zona', type: 'text', hint: 'Barrio o zona detectada por tu ubicación' },
 ];
 
 const EVENT_FIELDS: FieldSpec[] = [
