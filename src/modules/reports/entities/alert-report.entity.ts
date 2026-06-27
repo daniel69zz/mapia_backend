@@ -102,6 +102,12 @@ export class AlertReport extends BaseEntity {
   @Column({ type: 'text', default: 'active' })
   status: ReportStatus;
 
+  @ApiPropertyOptional({
+    description: 'Presentación + campos dinámicos por categoría (taxonomía nueva)',
+  })
+  @Column({ type: 'jsonb', nullable: true })
+  details: Record<string, unknown> | null;
+
   @OneToMany(() => AlertReportImage, (image) => image.report)
   images?: AlertReportImage[];
 }

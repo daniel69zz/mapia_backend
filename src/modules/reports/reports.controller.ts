@@ -27,8 +27,10 @@ import { CreateReportDto } from './dto/create-report.dto';
 import { CreateCitizenReportDto } from './dto/create-citizen-report.dto';
 import { ParseCitizenReportDto } from './dto/parse-citizen-report.dto';
 import { AnalyzePhotoDto } from './dto/analyze-photo.dto';
+import { AnalyzeReportDto } from './dto/analyze-report.dto';
 import { NearbyReportsDto } from './dto/nearby-reports.dto';
 import { ConfirmReportDto, RejectReportDto } from './dto/confirm-report.dto';
+import { ReportAnalysisService } from './analysis/report-analysis.service';
 
 const MAX_REPORT_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -39,7 +41,27 @@ export class ReportsController {
   constructor(
     private readonly reportsService: ReportsService,
     private readonly aiVision: AiVisionService,
+    private readonly analysis: ReportAnalysisService,
   ) {}
+
+  @Public()
+  @Post('reports/analyze')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Paso 1: clasifica el aviso (texto+imágenes+ubicación) y arma el formulario dinámico',
+  })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileFieldsInterceptor([{ name: 'images', maxCount: 3 }], {
+      limits: { fileSize: MAX_REPORT_IMAGE_BYTES },
+    }),
+  )
+  analyzeReport(
+    @Body() dto: AnalyzeReportDto,
+    @UploadedFiles() files?: { images?: Express.Multer.File[] },
+  ) {
+    return this.analysis.analyze(dto, files?.images ?? []);
+  }
 
   @Public()
   @Post('reports/parse')

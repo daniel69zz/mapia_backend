@@ -153,6 +153,8 @@ export class ReportsService {
       sourceText: dto.sourceText ?? null,
       confidence: dto.confidence === undefined ? '0.75' : String(dto.confidence),
       status: 'active',
+      category: (dto.category as AlertReport['category']) ?? null,
+      details: parseDetails(dto.details),
     });
 
     const saved = await this.alertReportRepo.save(report);
@@ -242,6 +244,16 @@ export class ReportsService {
     if (!inside) {
       throw new BadRequestException('La ubicacion del reporte debe estar dentro de Bolivia');
     }
+  }
+}
+
+function parseDetails(raw: string | undefined): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null;
+  } catch {
+    return null;
   }
 }
 

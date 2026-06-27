@@ -12,6 +12,7 @@ import { ReportsController } from './reports.controller';
 import { ReportsService } from './reports.service';
 import { AiVisionService } from './ai-vision.service';
 import { ModerationService } from './moderation.service';
+import { ReportAnalysisService } from './analysis/report-analysis.service';
 
 @Module({
   imports: [
@@ -27,6 +28,6 @@ import { ModerationService } from './moderation.service';
     AiModule,
   ],
   controllers: [ReportsController],
-  providers: [ReportsService, AiVisionService, ModerationService],
+  providers: [ReportsService, AiVisionService, ModerationService, ReportAnalysisService],
 })
 export class ReportsModule {}

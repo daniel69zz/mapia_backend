@@ -100,4 +100,18 @@ export class CreateCitizenReportDto {
   @Min(0)
   @Max(1)
   confidence?: number;
+
+  @ApiPropertyOptional({ description: 'Categoría del aviso (taxonomía nueva)' })
+  @IsOptional()
+  @IsString()
+  @Length(0, 60)
+  category?: string;
+
+  @ApiPropertyOptional({
+    description: 'JSON con presentación + campos dinámicos por categoría',
+  })
+  @IsOptional()
+  @IsString()
+  @Length(0, 8000)
+  details?: string;
 }
