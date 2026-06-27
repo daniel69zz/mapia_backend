@@ -25,5 +25,5 @@ export class GeoPlaceDto {
   @ApiProperty() formattedAddress: string;
   @ApiProperty() latitude: number;
   @ApiProperty() longitude: number;
-  @ApiProperty({ description: 'Origen del dato: google | mock' }) source: 'google' | 'mock';
+  @ApiProperty({ description: 'Origen del dato: google' }) source: 'google';
 }

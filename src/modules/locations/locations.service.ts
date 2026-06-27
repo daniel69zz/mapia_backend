@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+﻿import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { MapsConfig } from '@core/config/configuration';
 import { GeoPlaceDto } from './dto/locations-query.dto';
@@ -8,13 +8,8 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h: el geocoding cambia poco y la API cuesta.
+const CACHE_TTL_MS = 1000 * 60 * 60 * 24;
 
-/**
- * Geocoding / búsqueda de lugares vía Google Maps.
- * - Cachea en memoria para no gastar de más (en prod podría ser Redis).
- * - Si no hay API key o está deshabilitado, responde MOCK (no rompe dev).
- */
 @Injectable()
 export class LocationsService {
   private readonly logger = new Logger(LocationsService.name);
@@ -31,7 +26,7 @@ export class LocationsService {
     if (cached) return cached[0];
 
     if (!this.cfg.apiKey || !this.cfg.geocodingEnabled) {
-      return this.mockReverse(lat, lng);
+      throw new ServiceUnavailableException('Google Geocoding no está configurado.');
     }
 
     try {
@@ -47,7 +42,9 @@ export class LocationsService {
       };
       const first = data.results?.[0];
       if (data.status !== 'OK' || !first) {
-        return this.mockReverse(lat, lng);
+        throw new ServiceUnavailableException(
+          'No se encontró una dirección real para esa ubicación.',
+        );
       }
       const place: GeoPlaceDto = {
         formattedAddress: first.formatted_address,
@@ -58,8 +55,9 @@ export class LocationsService {
       this.writeCache(key, [place]);
       return place;
     } catch (err) {
-      this.logger.warn(`Reverse geocode falló, usando mock: ${(err as Error).message}`);
-      return this.mockReverse(lat, lng);
+      this.logger.warn(`Reverse geocode falló: ${(err as Error).message}`);
+      if (err instanceof ServiceUnavailableException) throw err;
+      throw new ServiceUnavailableException('No se pudo resolver la ubicación.');
     }
   }
 
@@ -69,7 +67,7 @@ export class LocationsService {
     if (cached) return cached;
 
     if (!this.cfg.apiKey || !this.cfg.placesEnabled) {
-      return [this.mockSearch(q)];
+      return [];
     }
 
     try {
@@ -77,7 +75,6 @@ export class LocationsService {
       url.searchParams.set('query', q);
       url.searchParams.set('key', this.cfg.apiKey);
       url.searchParams.set('language', 'es');
-      // Sesga resultados hacia Bolivia / La Paz.
       url.searchParams.set('region', 'bo');
 
       const res = await fetch(url);
@@ -89,7 +86,7 @@ export class LocationsService {
         }[];
       };
       if (data.status !== 'OK' || !data.results?.length) {
-        return [this.mockSearch(q)];
+        return [];
       }
       const places: GeoPlaceDto[] = data.results.slice(0, 10).map((r) => ({
         formattedAddress: r.formatted_address,
@@ -100,33 +97,10 @@ export class LocationsService {
       this.writeCache(key, places);
       return places;
     } catch (err) {
-      this.logger.warn(`Places search falló, usando mock: ${(err as Error).message}`);
-      return [this.mockSearch(q)];
+      this.logger.warn(`Places search falló: ${(err as Error).message}`);
+      return [];
     }
   }
-
-  // --- mocks (desarrollo sin API key) ---
-
-  private mockReverse(lat: number, lng: number): GeoPlaceDto {
-    return {
-      formattedAddress: `Ubicación aproximada (${lat.toFixed(4)}, ${lng.toFixed(4)}), La Paz, Bolivia`,
-      latitude: lat,
-      longitude: lng,
-      source: 'mock',
-    };
-  }
-
-  private mockSearch(q: string): GeoPlaceDto {
-    // Centro aproximado de La Paz como referencia genérica.
-    return {
-      formattedAddress: `${q}, La Paz, Bolivia`,
-      latitude: -16.5,
-      longitude: -68.15,
-      source: 'mock',
-    };
-  }
-
-  // --- cache helpers ---
 
   private readCache(key: string): GeoPlaceDto[] | null {
     const entry = this.cache.get(key);
