@@ -12,7 +12,7 @@ import {
 import { Post } from '@modules/posts/entities/post.entity';
 import { User } from '@modules/users/entities/user.entity';
 
-export type ReactionType = 'LIKE';
+export type ReactionType = 'LIKE' | 'DISLIKE';
 
 /** Reacción a una publicación. MVP: solo LIKE. Único por (post,user). */
 @Entity('reactions')
@@ -39,7 +39,7 @@ export class Reaction {
   @JoinColumn({ name: 'user_id' })
   user?: User;
 
-  @ApiProperty({ enum: ['LIKE'], default: 'LIKE' })
+  @ApiProperty({ enum: ['LIKE', 'DISLIKE'], default: 'LIKE' })
   @Column({ type: 'varchar', length: 10, default: 'LIKE' })
   type: ReactionType;
 

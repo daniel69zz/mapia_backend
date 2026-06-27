@@ -19,6 +19,7 @@ import { AuthModule } from '@modules/auth/auth.module';
 import { UsersModule } from '@modules/users/users.module';
 import { ProfilesModule } from '@modules/profiles/profiles.module';
 import { PostsModule } from '@modules/posts/posts.module';
+import { PublicationsModule } from '@modules/publications/publications.module';
 import { PostMediaModule } from '@modules/post-media/post-media.module';
 import { CommentsModule } from '@modules/comments/comments.module';
 import { ReactionsModule } from '@modules/reactions/reactions.module';
@@ -62,6 +63,7 @@ import { HealthModule } from '@modules/health/health.module';
     UsersModule,
     ProfilesModule,
     PostsModule,
+    PublicationsModule,
     PostMediaModule,
     CommentsModule,
     ReactionsModule,
