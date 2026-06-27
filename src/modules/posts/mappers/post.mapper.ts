@@ -14,6 +14,7 @@ export function toPostResponse(post: Post, isLiked = false): PostResponseDto {
     latitude: Number(post.latitude),
     longitude: Number(post.longitude),
     address: post.address,
+    radiusMeters: post.radiusMeters ?? null,
     isVerified: post.isVerified,
     isLiked,
     likesCount: post.likesCount,

@@ -55,6 +55,10 @@ export class Post extends BaseEntity {
   @Column({ type: 'varchar', length: 300, nullable: true })
   address: string | null;
 
+  @ApiPropertyOptional({ example: 500, description: 'Radio del evento en metros (0 = puntual)' })
+  @Column({ name: 'radius_meters', type: 'integer', nullable: true })
+  radiusMeters: number | null;
+
   @ApiProperty({ default: false })
   @Column({ name: 'is_verified', type: 'boolean', default: false })
   isVerified: boolean;
