@@ -35,6 +35,25 @@ export interface CategorySpec {
 
 // --- Esquemas de campos reutilizables por grupo --------------------------------
 
+/** Departamentos de Bolivia (opciones del combo de "Departamento"). */
+export const DEPARTMENTS = [
+  'La Paz',
+  'Cochabamba',
+  'Santa Cruz',
+  'Oruro',
+  'Potosí',
+  'Chuquisaca',
+  'Tarija',
+  'Beni',
+  'Pando',
+];
+
+/** Campos de ubicación comunes a todas las categorías (combos con sugerencias IA). */
+export const LOCATION_FIELDS: FieldSpec[] = [
+  { key: 'department', label: 'Departamento', type: 'select', options: DEPARTMENTS },
+  { key: 'zone', label: 'Zona', type: 'text', hint: 'Barrio, mercado o zona detectada' },
+];
+
 const EVENT_FIELDS: FieldSpec[] = [
   { key: 'eventName', label: 'Nombre del evento', type: 'text', hint: 'Ej. Entrada del Gran Poder' },
   { key: 'date', label: 'Fecha', type: 'date' },

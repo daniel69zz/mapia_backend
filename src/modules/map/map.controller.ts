@@ -1,7 +1,9 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Public } from '@common/decorators/public.decorator';
 import { MapService } from './map.service';
+import { RoutingService } from './routing.service';
+import { RouteQueryDto } from './dto/route-query.dto';
 import { MapAlertsQueryDto } from './dto/map-alerts-query.dto';
 import { MapBboxQueryDto, MapMarkerDto, MapNearbyQueryDto } from './dto/map-query.dto';
 import { MapPublicationsQueryDto } from './dto/map-publications-query.dto';
@@ -9,7 +11,18 @@ import { MapPublicationsQueryDto } from './dto/map-publications-query.dto';
 @ApiTags('map')
 @Controller('map')
 export class MapController {
-  constructor(private readonly mapService: MapService) {}
+  constructor(
+    private readonly mapService: MapService,
+    private readonly routingService: RoutingService,
+  ) {}
+
+  @Public()
+  @Post('route')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Ruta óptima evitando bloqueos/obstrucciones activas' })
+  route(@Body() dto: RouteQueryDto) {
+    return this.routingService.route(dto);
+  }
 
   @Public()
   @Get('posts')

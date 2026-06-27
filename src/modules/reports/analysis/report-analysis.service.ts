@@ -8,6 +8,9 @@ import {
   CATEGORIES,
   CATEGORY_CODES,
   CategorySpec,
+  DEPARTMENTS,
+  FieldSpec,
+  LOCATION_FIELDS,
   RiskLevel,
   classifyByKeywords,
   getCategory,
@@ -35,6 +38,7 @@ interface AiResult {
   summary?: string;
   riskLevel?: string;
   values?: Record<string, unknown>;
+  suggestions?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -73,22 +77,32 @@ export class ReportAnalysisService {
         : classifyByKeywords(text);
 
     const aiValues = (ai?.values ?? {}) as Record<string, unknown>;
+    const aiSuggestions = (ai?.suggestions ?? {}) as Record<string, unknown>;
 
-    const fields: AnalyzedField[] = category.fields.map((spec) => {
+    // Campos de ubicación (Departamento/Zona) comunes + los de la categoría.
+    const specs = dedupeByKey([...LOCATION_FIELDS, ...category.fields]);
+
+    const fields: AnalyzedField[] = specs.map((spec) => {
       const raw = aiValues[spec.key] ?? heuristicValues[spec.key] ?? null;
-      const value = raw === null || raw === undefined ? null : String(raw).trim();
-      // 'zone' se completa con la ubicación del mapa si no vino otra cosa.
-      const finalValue =
-        value && value.length > 0 ? value : spec.key === 'zone' ? zone : null;
+      let value = raw === null || raw === undefined ? null : String(raw).trim();
+      // 'department' se completa con el detectado por coordenadas si la IA no lo dio.
+      if ((!value || value.length === 0) && spec.key === 'department') {
+        value = zone;
+      }
+      const hasValue = !!value && value.length > 0;
+
+      const suggestions = this.buildSuggestions(spec, aiSuggestions, value);
+
       return {
         key: spec.key,
         label: spec.label,
         type: spec.type,
-        value: finalValue && finalValue.length > 0 ? finalValue : null,
+        value: hasValue ? value : null,
         required: spec.required ?? false,
-        source: finalValue && finalValue.length > 0 ? 'ai' : 'empty',
+        source: hasValue ? 'ai' : 'empty',
         hint: spec.hint,
         options: spec.options,
+        suggestions,
       };
     });
 
@@ -120,6 +134,19 @@ export class ReportAnalysisService {
     };
   }
 
+  /** Opciones de combo: catálogo fijo para selects, o sugerencias de la IA. */
+  private buildSuggestions(
+    spec: FieldSpec,
+    aiSuggestions: Record<string, unknown>,
+    value: string | null,
+  ): string[] {
+    if (spec.key === 'department') return DEPARTMENTS;
+    if (spec.type === 'select') return spec.options ?? [];
+    const fromAi = toStringArray(aiSuggestions[spec.key]);
+    if (value && !fromAi.includes(value)) fromAi.unshift(value);
+    return fromAi.slice(0, 6);
+  }
+
   // --- IA -----------------------------------------------------------------------
 
   private async classifyWithAi(
@@ -140,7 +167,9 @@ export class ReportAnalysisService {
       `En "values" usa solo estas claves cuando apliquen: ${fieldList}.`,
       'Estructura: {"category": code, "title": string corto, "description": string mejorado, ' +
         '"summary": string <=90 chars para el mapa, "riskLevel": "info|low|medium|high|critical", ' +
-        '"values": { clave: valor_string }}',
+        '"values": { clave: valor_string }, "suggestions": { clave: [valores_string] }}.',
+      'En "suggestions" propón 2-4 opciones plausibles por cada campo abierto ' +
+        '(zona, calles o rutas afectadas, lugar, etc.) para mostrarlas como combo.',
     ].join(' ');
 
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
@@ -212,6 +241,25 @@ export class ReportAnalysisService {
 
 function clean(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
+}
+
+function dedupeByKey(specs: FieldSpec[]): FieldSpec[] {
+  const seen = new Set<string>();
+  const out: FieldSpec[] = [];
+  for (const s of specs) {
+    if (seen.has(s.key)) continue;
+    seen.add(s.key);
+    out.push(s);
+  }
+  return out;
+}
+
+function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((v) => String(v).trim())
+    .filter((v) => v.length > 0)
+    .slice(0, 6);
 }
 
 /** Devuelve un mimetype de imagen válido por mimetype o por extensión, o null. */

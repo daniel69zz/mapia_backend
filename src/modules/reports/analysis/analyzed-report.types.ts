@@ -11,6 +11,8 @@ export interface AnalyzedField {
   source: 'ai' | 'empty';
   hint?: string;
   options?: string[];
+  /** Sugerencias (de IA o catálogo) para mostrar el campo como combo editable. */
+  suggestions: string[];
 }
 
 /** Resultado del Paso 1: aviso clasificado y listo para confirmar. */
