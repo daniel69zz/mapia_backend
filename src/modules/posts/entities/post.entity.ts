@@ -55,9 +55,17 @@ export class Post extends BaseEntity {
   @Column({ type: 'varchar', length: 300, nullable: true })
   address: string | null;
 
+  @ApiPropertyOptional({ example: 'Plaza Abaroa' })
+  @Column({ name: 'location_name', type: 'varchar', length: 300, nullable: true })
+  locationName: string | null;
+
   @ApiPropertyOptional({ example: 500, description: 'Radio del evento en metros (0 = puntual)' })
   @Column({ name: 'radius_meters', type: 'integer', nullable: true })
   radiusMeters: number | null;
+
+  @ApiProperty({ default: true })
+  @Column({ name: 'show_on_map', type: 'boolean', default: true })
+  showOnMap: boolean;
 
   @ApiProperty({ default: false })
   @Column({ name: 'is_verified', type: 'boolean', default: false })

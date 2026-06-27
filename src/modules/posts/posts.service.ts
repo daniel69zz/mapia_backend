@@ -66,7 +66,9 @@ export class PostsService {
       latitude: dto.latitude,
       longitude: dto.longitude,
       address: dto.address ?? null,
+      locationName: dto.locationName ?? dto.address ?? null,
       radiusMeters: dto.radiusMeters ?? null,
+      showOnMap: dto.showOnMap ?? true,
       // Decisión de proyecto: se publica directo; moderación es reactiva.
       status: PostStatus.PUBLISHED,
       visibility: PostVisibility.PUBLIC,
@@ -164,6 +166,9 @@ export class PostsService {
       latitude: dto.latitude ?? post.latitude,
       longitude: dto.longitude ?? post.longitude,
       address: dto.address ?? post.address,
+      locationName: dto.locationName ?? dto.address ?? post.locationName,
+      radiusMeters: dto.radiusMeters ?? post.radiusMeters,
+      showOnMap: dto.showOnMap ?? post.showOnMap,
     });
     await this.postRepo.save(post);
     return this.findOne(id, userId);
